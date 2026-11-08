@@ -29,6 +29,7 @@ This page is written from the code (`software/noknok_rpc.py` 0.6.2, `software/co
 | Authorisation of `/rpc` | **Not built.** `Dispatcher.authorize` exists as a hook and nothing sets it (see section 5) |
 | `status`: per-module installed-vs-published firmware state | **Not built** (the op returns modules, events, strikes and link state only) |
 | `clock.set` op and a `timezone` device setting | **Not built.** A `time` setting is declarable, but nothing manages the clock behind it (online brains get NTP) |
+| Device status alerts and codes, power facts, settings state (ADR-008) | **Planned, not built** (DEV-210/211/212): names and values in [provisioning-http-api.md](provisioning-http-api.md#planned-device-status-alerts-and-codes-adr-008---not-built-yet) |
 | BLE carrier, `file.put`, `module.update`, `pair` ops | **Not built, not planned** (BLE was skipped for the launch brain) |
 | Unsolicited device-to-client messages (`event`) | **Not built.** HTTP has no push; clients poll |
 

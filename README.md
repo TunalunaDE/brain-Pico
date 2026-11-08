@@ -110,6 +110,10 @@ shows up on a PC as a drive again (fail-open, below), so recovery is always poss
    with module state re-enumerated, the event history empty and **product settings back to
    their defaults**. Every key is deliberately self-healing for that reason; credentials
    also live in `/data/wifi.json`. Bench-measured write: ~79 ms.
+   **nvm byte map** (one 4 KB sector; a write that sets any bit erases and rewrites all of it):
+   `nvm[0]` crash strikes, `nvm[1:5]` last OTA check (unix time), `nvm[5]` post-OTA marker,
+   `nvm[6]` safe-mode count, `nvm[7:23]` safe-mode reason, `nvm[23]` park reason (planned,
+   ADR-008, written in the same write as the 3rd strike), `nvm[24:64]` free, `nvm[64:]` the Store.
    An **I2C FRAM at 0x50** (byte-atomic, wear-free, two slots written alternately — genuinely
    power-safe) is still implemented in `noknok.py` and would remove that last loss, but no
    noknok board fits one: the PicoHub FRAM story (DEV-40) was **cancelled**. The FRAM is

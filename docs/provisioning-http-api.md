@@ -276,6 +276,77 @@ write, finite endurance, and a single slot, so a power cut mid-write loses the w
 re-derived). Hence: write on change only, debounced on idle, never in a product's hot loop.
 The `fram` branch stays in `noknok.store()` for a future board, but no shipping brain has it.
 
+## Planned: device status, alerts and codes (ADR-008) - NOT BUILT YET
+
+> **Status: design decided 8 Nov 2026; nothing in this section exists in code.py 0.43.** Tickets: DEV-210
+> (settings state), DEV-211 (power facts), DEV-212 (alerts, codes, park reason). When a ticket lands, its
+> rows move into the op table above and leave this section. The reasons for the design are in noknok's
+> internal decision record ADR-008; this section is the authoritative list of names and values.
+
+**Principle.** The brain reports **facts and stable codes**. The app turns them into words and compares
+them with what the product needs (its manifest). The brain never sends customer sentences and never
+judges a supply against estimated numbers.
+
+### New fields
+
+| Op | Field | Content |
+|----|-------|---------|
+| `hello` + `status` | `settings{origin, epoch, gen, seq}` | `origin`: `installed` (defaults written at install, unchanged since) / `stored` (loaded from the Store) / `lost` (provisioned, product present, but no `settings` record at boot) / `none` (unprovisioned, or no `config_schema`). `epoch`: 8 hex chars, random, set when the record is first written. `gen`: +1 per Store write of the record. `seq`: the existing RAM counter (now also in `hello`) |
+| `hello` | `power{result, reasons[]}` | cached result of the measured check (no bus traffic in `hello`): `ok` / `weak` / `insufficient` / `unknown` |
+| `hello` | `alerts[]` | codes of the conditions active now, e.g. `["E21","E10"]`; empty = nothing to report |
+| `hello` | `boot{reason}` | `power_on` / `reset` / `watchdog` / `safemode` / `reload` (+ `brownout` only if CircuitPython reports it) |
+| `status` | `power` | always an object (today: the PicoHub dict or `null`). The PicoHub fields keep their names at top level (`pd_state, contract_v, contract_a, vin, iin, v5v, temp_c, rails, inputs, faults[], warnings[], reset_cause`), plus `source` (`picohub` / `vsys` / `none`), `vsys` (bare Pico, only if the read proves reliable) and `check{result, reasons[], min_v5v, max_iin, phase}`. `null` becomes `{"source": "none"}` (the one small breaking change) |
+| `status` | `alerts[{code, since, detail}]` | active conditions with detail; `events[]` stays the history |
+| `status` | `modules_missing[{type, count}]` | `modules_required` from provisioning minus what enumerated |
+| `status` | `park{reason}` | when `state` is `parked`: `power` / `module_missing` / `script` |
+| `status` | `link.rssi` | dBm while joined |
+| `provision` | `modules_required` (optional arg) | kept with the credentials, for `modules_missing` |
+
+### Codes
+
+Event lines keep their tags and gain the code after the tag: `[PWR] E21 usb_held_for_power v5v=4.71 iin=0.48`.
+Older lines without a code stay as they are. A code never changes meaning; new ones take a free number.
+Ranges: E1-E9 setup, E10-E19 modules, E20-E29 power, E30-E39 recovery, E40-E49 WiFi, E50+ configuration.
+Customer wording lives in the app and on the public troubleshooting page, not here.
+
+| Code | Name | Raised by | When |
+|------|------|-----------|------|
+| E1 | wifi_not_found | brain | setup join `not_found` / provision `network_not_found` |
+| E2 | wifi_auth | brain | setup join `auth` |
+| E3 | no_internet | brain | joined, but DNS or the download host unreachable |
+| E4 | download_failed | brain | product, index or firmware download failed |
+| E5 | save_failed | brain | `not_saved`, filesystem read-only |
+| E6 | product_parked | brain | three crash strikes (`park.reason` says why) |
+| E7 | wifi_join_failed | brain | setup join `timeout` / `other` |
+| E10 | module_missing | brain | a `modules_required` type did not enumerate |
+| E11 | module_needs_service | brain | update refused: the bootloader layout does not match |
+| E12 | module_update_failed | brain | flash or verify failed |
+| E13 | module_rescue_failed | brain | a parked module could not be rescued |
+| E14 | module_type_mismatch | brain | a different module type at a saved address (DEV-204 guard) |
+| E20 | power_weak | brain (measured) or app (manifest comparison) | brain: 5 V rail below 4.75 V under load |
+| E21 | power_insufficient | brain (measured) or app (manifest comparison) | brain: PicoHub `usb_held_for_power` while a USB module is required, or `min_not_met` |
+| E22 | power_fault | brain | PicoHub latched fault `input_overcurrent` / `rail_5v_low` / `pd_failed` |
+| E23 | too_hot | brain | PicoHub `hot` notice / `heat_shed` fault |
+| E30 | restarted_after_hang | brain | watchdog reset (bench only today) |
+| E31 | safe_mode | brain | CircuitPython safe-mode restart |
+| E32 | crash | brain | a single strike (history only) |
+| E33 | settings_lost | app | `settings.origin` is `lost` and the app could not restore the values |
+| E40 | wifi_weak | brain | `rssi` below -75 dBm on 3 link checks in a row |
+| E41 | wifi_unstable | brain | more than 3 link drops in 1 h |
+| E50 | config_problem | brain | `hello.config.problems` not empty |
+
+### Power: what is measured and when
+
+| Item | Value |
+|------|-------|
+| Boot check | after enumeration, before `product.py`: one PicoHub status read, including faults latched during the last run |
+| Load check | one PicoHub read every 10 s during the first 5 min of the product run (from the service hook), keeping min `v5v` and max `iin` |
+| Brain thresholds | `weak`: `v5v` below 4.75 V under load. `insufficient`: `usb_held_for_power` (product needs a USB module) or `min_not_met`. Nothing else: no comparison with estimated currents on the brain |
+| Persistence | none: recomputed every boot. On the 3rd crash strike the park reason is written in the same nvm write as the strike count |
+| App-side judgement | the app compares `status.power` with the manifest's `power` block (Ecosystem `software/product-manifest.md`) and may raise E20/E21 itself; estimated module numbers only choose the recommended supply and never raise a warning |
+| Limit | a plain 5 V adapter does not announce its current. USB-C gives only a coarse class (0.5 / 1.5 / 3 A) and a USB-A-to-C cable always reads 0.5 A, so a good adapter can show `limited_power`; that alone is never a warning |
+| Settings `lost` | a provisioned brain always has a `settings` record (every install writes one), so a missing record means the Store was lost. The app then re-sends its last known values; with the same `epoch` and a higher `gen` it adopts the device's values instead |
+
 ## Related on-device data
 
 Since DEV-18 (15 Sep 2026) the brain **never writes its filesystem while a product runs**

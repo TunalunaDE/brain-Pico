@@ -4,6 +4,10 @@ Newest first. One entry per version bump, written in the same commit as the bump
 `## <version> - <date>` then `- DEV-xx - what changed and why. Breaking: yes/no.`
 Convention: Confluence "Development Conventions" (SD space, page 120160257).
 
+## docs - 2026-11-08
+
+- ADR-008 (DEV-90, DEV-177) - `docs/provisioning-http-api.md` gets the section "Planned: device status, alerts and codes" (new `hello`/`status` fields, the code list E1-E50, the power thresholds and the settings `origin` rules) as the single home for those names and values; the README gets the nvm byte map incl. the planned park-reason byte. Docs only, nothing built yet (DEV-210, DEV-211, DEV-212). Breaking: no.
+
 ## code.py 0.43 - 2026-11-07
 
 - DEV-196 - "Recover my device" (non-wipe brain image) kept the WiFi only if the brain's Store held a copy of it, and that copy was written only at setup: a brain set up before 15 Sep 2026, or whose Store record was lost, came back in setup mode. Every boot with a good `wifi.json` now also writes a missing Store copy (no write when it is already there), so those brains heal themselves on their next normal boot. Bench: copy back after one boot; recovery 4/4 with the product running after ~45 s. Breaking: no.
