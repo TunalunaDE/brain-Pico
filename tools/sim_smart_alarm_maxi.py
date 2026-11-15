@@ -37,6 +37,9 @@ import time as _rt
 ft.localtime = lambda t=None: _rt.gmtime(clk.utc if t is None else t)
 ft.mktime = lambda tup: calendar.timegm(tuple(tup[:6]) + (0, 0, 0))
 ft.sleep = lambda s: None
+import gc as _gc
+if not hasattr(_gc, "mem_free"):          # CircuitPython-only API used by the product
+    _gc.mem_free = lambda: 100000
 def advance(sec):
     clk.mono += sec; clk.utc += sec
 
@@ -163,6 +166,7 @@ def outside_safe():
 
 def run(scenario, preset=None):
     global w
+    clk.mono, clk.utc = 1000.0, calendar.timegm((2026, 11, 16, 5, 0, 0))   # every scenario starts 06:00 CET
     w = World(preset)
     w.scen = scenario()
     noknok.Conductor = FakeConductor
