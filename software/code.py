@@ -1,5 +1,12 @@
 # code.py — noknok Pico W provisioning + launcher
-# Version: 0.43 (wifi.json also back-fills a missing Store copy — DEV-196)
+# Version: 0.44 (stage-1 per chip family, matched by layout — DEV-128)
+#
+# v0.44 (Sue): DEV-128 — the stage-1 pass rolls out one bootloader PER CHIP FAMILY. Registry 2.0.0
+#   lists `bootloader.stage1.<CHIP>` (CH32V003, CH32X035); _resolve_stage1() returns {layout: index},
+#   the image cache has one slot per layout (fw_stage1_<layout>), and _stage1_pass() gives each module
+#   the stage-1 whose layout equals the layout the module reports itself (no match = silently skipped,
+#   never cross-family). STAGE1_OWN_LINE is gone: the PicoHub X035 (layout 3) is updated and its
+#   cached app restored like any module. The 1.x registry shape (one {repo,index}) still works.
 #
 # v0.41 (Sue): DEV-200 — safe_idle() starts the app channel FIRST and serves only the app for
 # PARK_REFETCH_AFTER_S (60 s) before the product.py re-fetch (a stalled download blocked
@@ -146,9 +153,8 @@
 #   always adds CARRIER_FIRMWARE ("picohub", no floor) to the manifest's types:
 #   its index.json is resolved, the image cached, and the power manager updated
 #   (and rescued when parked) like any module. A brain without a PicoHub only
-#   pays one cached download per published version. The stage-1 pass skips the
-#   PicoHub (STAGE1_OWN_LINE): its CH32X035 stage-1 has its own version line, so
-#   comparing it with the published CH32V003 stage-1 would raise a daily alert.
+#   pays one cached download per published version. (Its stage-1 was skipped here
+#   until v0.44, DEV-128: now one stage-1 per layout, see above.)
 #
 # v0.23 changes (Sue): DEV-123 — the status op carries `power`: the noknok
 #   PicoHub's status (charger contract, input, 5 V rail, temperature, rails,
@@ -488,7 +494,7 @@ import adafruit_requests
 import adafruit_connection_manager
 from adafruit_httpserver import Server, Request, Response, POST
 
-CODE_VERSION = "0.43"
+CODE_VERSION = "0.44"
 
 LOG_FILE    = nk.DATA_DIR + "/log.txt"        # bench only (marker), see below
 EVENTS_KEY  = "events"     # audit history ([FW]/[CRASH]/[ROLE]/[RESET]...) lives in the
@@ -2038,28 +2044,44 @@ def _resolve_module_firmware(session, module_firmware):
 
 
 def _resolve_stage1(session, registry_doc):
-    """The current stage-1 bootloader, from the registry's `bootloader.stage1`
-    entry, or None. Same index shape as a module: {version, url, layout, size,
-    crc32}. All five are required here — a bootloader update destroys the app
-    region and there is no rollback, so nothing about it is guessed."""
-    entry = (registry_doc.get("bootloader") or {}).get("stage1")
-    if not entry or not entry.get("index"):
-        return None
-    try:
-        idx = _download_json(session, entry["index"], timeout=INDEX_TIMEOUT_S) or {}
-    except Exception as e:
-        log(f"[bl] stage-1 index fetch failed ({e!r}) — bootloader updates skipped")
-        return None
-    if int(idx.get("format", 1)) > INDEX_FORMAT:
-        log("[bl] stage-1 index format is newer than this brain understands — skipped")
-        return None
-    for k in ("version", "url", "layout", "size", "crc32"):
-        if idx.get(k) is None:
-            log(f"[bl] stage-1 index is missing {k} — bootloader updates skipped")
-            return None
-    log(f"[bl] current stage-1 is {idx['version']} (layout {idx['layout']})")
-    return {"version": idx["version"], "url": idx["url"], "layout": int(idx["layout"]),
-            "size": idx["size"], "crc32": idx["crc32"]}
+    """The current stage-1 bootloaders, from the registry's `bootloader.stage1`:
+    {layout: {version, url, layout, size, crc32}}, empty if none usable.
+
+    Registry 2.0.0 (DEV-128) lists one stage-1 per chip family:
+    `{"CH32V003": {repo, index}, "CH32X035": {repo, index}}`. The brain matches
+    them to a module BY LAYOUT (the module's own reported layout), never by name
+    or module type. The 1.x shape (one `{repo, index}`) is still read, as one
+    entry. All five index fields are required — a bootloader update destroys
+    the app region and there is no rollback, so nothing about it is guessed.
+    One family failing to resolve skips only that family."""
+    st = (registry_doc.get("bootloader") or {}).get("stage1")
+    if not isinstance(st, dict) or not st:
+        return {}
+    entries = [("stage1", st)] if "index" in st else list(st.items())
+    out = {}
+    for chip, entry in entries:
+        if not isinstance(entry, dict) or not entry.get("index"):
+            continue
+        try:
+            idx = _download_json(session, entry["index"], timeout=INDEX_TIMEOUT_S) or {}
+        except Exception as e:
+            log(f"[bl] {chip} stage-1 index fetch failed ({e!r}) — skipped")
+            continue
+        if int(idx.get("format", 1)) > INDEX_FORMAT:
+            log(f"[bl] {chip} stage-1 index format is newer than this brain understands — skipped")
+            continue
+        missing = [k for k in ("version", "url", "layout", "size", "crc32") if idx.get(k) is None]
+        if missing:
+            log(f"[bl] {chip} stage-1 index is missing {missing[0]} — skipped")
+            continue
+        lay = int(idx["layout"])
+        if lay in out:
+            log(f"[bl] {chip} stage-1: layout {lay} already listed — ignored")
+            continue
+        log(f"[bl] current {chip} stage-1 is {idx['version']} (layout {lay})")
+        out[lay] = {"version": idx["version"], "url": idx["url"], "layout": lay,
+                    "size": idx["size"], "crc32": idx["crc32"]}
+    return out
 
 
 def _semver3(s):
@@ -2069,40 +2091,52 @@ def _semver3(s):
         return None
 
 
-# Module types whose bootloader is another chip family than the stage-1 published in
-# the registry (the CH32V003 one): their stage-1 is never touched by _stage1_pass().
-# The PicoHub's CH32X035 stage-1 (layout 3) has its own version line; an over-the-air
-# X035 stage-1 rollout would need its own registry entry (not wired yet, DEV-124).
-STAGE1_OWN_LINE = {"picohub": "CH32X035"}
+def _s1_slot(layout):
+    """Cache slot of the stage-1 for a layout: one per chip family (DEV-128)."""
+    return "stage1_%d" % layout
 
-def _stage1_pass(c, s1):
+
+def _stage1_pass(c, s1_by_layout):
     """Bring every I2C module's stage-1 bootloader up to the published version.
 
     This is what makes DEV-31's promise real in the field: a bootloader bug
     found after the batch ships is fixed over the air, not with a clamp.
 
+    `s1_by_layout` = {layout: published stage-1} (one per chip family, DEV-128).
+    Each module gets the stage-1 whose layout EQUALS the layout it reports
+    itself; no match -> skipped silently (another chip family, or an older
+    registry). A V003 module can therefore never receive the X035 image or the
+    other way round.
+
     Rules, all from the runbook (Ecosystem/software/bootloader-update.md):
       - same transfer as an app update, then the app is pushed back — so the
         module's CURRENT app image must be in the cache, for the SAME layout;
       - a cross-layout stage-1 is refused by the module itself (error 8), so
-        it is refused here first rather than transferred and rejected;
+        it is never offered here;
       - a legacy monolithic bootloader (no 0xB1) cannot self-update — SWD only.
     Reading a module's stage-1 version costs a bootloader round-trip and a
     re-enumeration, so it is done once per module and remembered as "bl" in
     the Conductor's saved state (the Store, not a file); after that a newer
     published stage-1 is a free compare."""
-    if not s1:
+    if not s1_by_layout:
         return
-    want = _semver3(s1["version"])
-    try:
-        s1_image, s1_meta = _cache_read("stage1")
-    except ValueError as e:
-        log(f"[bl] no usable stage-1 image in the cache ({e}) — skipped")
-        return
-    if s1_meta.get("version") != s1["version"]:
-        log(f"[bl] cache holds stage-1 {s1_meta.get('version')}, current is "
-            f"{s1['version']} (fetch failed?) — skipped")
-        return
+    s1_cache = {}                 # layout -> (image, meta) or None, read lazily
+
+    def s1_for(layout):
+        if layout not in s1_cache:
+            s1 = s1_by_layout[layout]
+            try:
+                img, meta = _cache_read(_s1_slot(layout))
+                if meta.get("version") != s1["version"]:
+                    log(f"[bl] cache holds stage-1 (layout {layout}) {meta.get('version')}, "
+                        f"current is {s1['version']} (fetch failed?) — skipped")
+                    s1_cache[layout] = None
+                else:
+                    s1_cache[layout] = (img, meta)
+            except ValueError as e:
+                log(f"[bl] no usable stage-1 image (layout {layout}) in the cache ({e}) — skipped")
+                s1_cache[layout] = None
+        return s1_cache[layout]
 
     targets = []
     for list_attr, mf_key in c._FW_GROUPS:
@@ -2112,12 +2146,6 @@ def _stage1_pass(c, s1):
     for mf_key, uid in targets:
         m = c.by_uid(uid) if uid else None
         if m is None:
-            continue
-        if mf_key in STAGE1_OWN_LINE:
-            # Another chip family: its stage-1 has its own versions and layout, so the
-            # published (CH32V003) stage-1 is not for it. Without this the pass would
-            # compare unrelated version numbers and raise a field alert every day.
-            log(f"[bl] {mf_key} {uid}: {STAGE1_OWN_LINE[mf_key]} bootloader, own stage-1 line — skipped")
             continue
         entry = {"bus": "i2c", "address": m.address, "uid": uid, "type": mf_key}
         if not hasattr(m, "bootloader"):
@@ -2136,16 +2164,23 @@ def _stage1_pass(c, s1):
             continue
         have = (bl[1], bl[2], bl[3])
         layout = bl[4] if len(bl) > 4 and bl[4] else None
+        s1 = s1_by_layout.get(layout)
+        if s1 is None:
+            continue              # no published stage-1 for this layout: not ours
+        want = _semver3(s1["version"])
         if want is None or have >= want:
             continue
-        if layout != s1["layout"]:
-            why = "module stage-1 layout %s, published stage-1 is layout %s" % (layout, s1["layout"])
-            log(f"[bl] {mf_key} {uid}: REFUSED — {why}")
-            event(f"[BL]    {mf_key:<11} uid={uid} refused: {why}")
-            _field_alerts.append("stage-1 refused %s" % uid)
+        got = s1_for(layout)
+        if got is None:
             continue
+        s1_image, s1_meta = got
         try:
-            app_image, app_meta = _cache_read(mf_key)
+            # DEV-205: the app is read from its cache FILE page by page (a 14 KB PicoHub
+            # app as one bytes object is a MemoryError on a booted brain, seen in the
+            # DEV-128 bench run). The stage-1 image itself is ~3 KB and stays in RAM.
+            from noknok_fetch import open_cached
+            app_meta = _cache_meta(mf_key) or {}
+            app_image = open_cached(_cache_paths(mf_key)[0], app_meta)
         except ValueError as e:
             log(f"[bl] {mf_key} {uid}: no cached app to restore after the update ({e}) — skipped")
             _field_alerts.append("stage-1 no app %s" % uid)
@@ -2628,8 +2663,8 @@ def check_and_flash_modules(module_firmware):
     # a day. The first check after provisioning fills the cache for every type,
     # which is also what makes offline rescue work from day one.
     to_cache = list(resolved.items())
-    if stage1:
-        to_cache.append(("stage1", stage1))     # the bootloader is cached like any image
+    for lay, s1 in (stage1 or {}).items():
+        to_cache.append((_s1_slot(lay), s1))    # each stage-1 is cached like any image
     for mtype, spec in to_cache:
         cached = _cache_meta(mtype)
         if cached and cached.get("version") == spec.get("version") \

@@ -240,8 +240,8 @@ OTA interval, mDNS name) move here under [DEV-39](https://noknokdev.atlassian.ne
 **`code.py` v0.16** — provisioning + launcher + module firmware OTA. 15 Sep 2026: **no filesystem
 writes while a product runs (DEV-18)** — read-only by default, runtime data in the Store (nvm),
 setup-time writes into `/data`, `settings.toml` for pins and drive visibility; see the two sections above. Field-hardened 12 Sep 2026:
-- **Bootloader updates over the air (DEV-31).** The registry names the current stage-1
-  (`module-I2C-bootloader/firmware/index.json`); it is cached like any image, and before the
+- **Bootloader updates over the air (DEV-31, one per chip family since DEV-128).** The registry names the current stage-1 per chip family
+  (`bootloader.stage1.CH32V003` / `.CH32X035`, indexes in `module-I2C-bootloader/firmware/`); each is cached like any image (one slot per layout), and before the
   app pass every I²C module below the published stage-1 gets it — and its current app back —
   in one `stage1_update()` transaction from the cache. Same flash layout only (the module
   refuses a cross-layout stage-1 itself, error 8, so the brain refuses first); a legacy
@@ -518,8 +518,8 @@ if hub:
   layout 3), so the brain updates it like any module: manifest key `picohub` in `firmware_report()` /
   `update_all()`, rescued by `rescue_parked_module()` when an update was cut. Products never list the
   board they sit on, so `code.py` always adds `picohub` to the types its daily OTA pass resolves
-  (`CARRIER_FIRMWARE`), and its stage-1 pass leaves the X035 alone (`STAGE1_OWN_LINE`: the published
-  stage-1 is the CH32V003 one). After an update the power manager enumerates again at `0x7F` and gets
+  (`CARRIER_FIRMWARE`). Its stage-1 is rolled out too since code.py 0.44 (DEV-128): the registry lists
+  one stage-1 per chip family and the pass matches it to the module by layout (X035 = layout 3). After an update the power manager enumerates again at `0x7F` and gets
   its usual address back.
 - Modules without a driver now keep their address reserved in the saved state, like the PicoHub,
   so after a Pico reboot no newcomer can be given an address that is still in use.

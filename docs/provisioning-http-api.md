@@ -131,9 +131,9 @@ handled, because it is the first point at which the Pico has internet:
    source — no GitHub requests this boot.
 3. Otherwise resolve `module_firmware` floors: fetch
    `Ecosystem/software/modules.json`, then each module's `firmware/index.json`
-   **and the stage-1 bootloader's** (`bootloader.stage1` in the registry);
+   **and the stage-1 bootloaders'** (`bootloader.stage1.<CHIP>` in the registry, one per chip family);
    then refresh the on-device image cache (`/data/fw_<type>.bin` + `.json` sidecar,
-   `/data/fw_stage1.bin` for the bootloader) for everything whose cached version/crc
+   `/data/fw_stage1_<layout>.bin` for each bootloader) for everything whose cached version/crc
    differs from current — **before any Conductor exists** (downloads after one
    has existed can hang). Each download is verified against the index's
    `size`/`crc32`.

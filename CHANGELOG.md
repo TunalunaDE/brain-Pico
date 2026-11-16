@@ -4,6 +4,10 @@ Newest first. One entry per version bump, written in the same commit as the bump
 `## <version> - <date>` then `- DEV-xx - what changed and why. Breaking: yes/no.`
 Convention: Confluence "Development Conventions" (SD space, page 120160257).
 
+## code.py 0.44 - 2026-11-16
+
+- DEV-128 - a fix to the PicoHub power manager's stage-1 bootloader (CH32X035) now reaches fielded boards over the air, like the CH32V003 one. The module registry (Ecosystem `modules.json` 2.0.0) lists one stage-1 per chip family; the brain downloads each, keeps one cache slot per flash layout (`/data/fw_stage1_<layout>.bin`), and gives every module the stage-1 whose layout equals the layout it reports itself (never cross-family; no match = skipped silently). The PicoHub's cached app is restored after its stage-1 update. Old brains ignore the new registry shape (no stage-1, app updates unaffected). Host tests in `tools/test_rescue_paths.py`; bench result in the Jira hand-off. Breaking: no. The old cache file `fw_stage1.bin` is now unused.
+
 ## docs - 2026-11-08
 
 - ADR-008 (DEV-90, DEV-177) - `docs/provisioning-http-api.md` gets the section "Planned: device status, alerts and codes" (new `hello`/`status` fields, the code list E1-E50, the power thresholds and the settings `origin` rules) as the single home for those names and values; the README gets the nvm byte map incl. the planned park-reason byte. Docs only, nothing built yet (DEV-210, DEV-211, DEV-212). Breaking: no.
