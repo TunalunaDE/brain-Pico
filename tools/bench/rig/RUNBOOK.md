@@ -12,7 +12,7 @@ bench notes (`tools.md`), not here. No credentials go in any file here.
 | `run_night.py CONFIG.toml [--dry-run]` | bench host (Pi) | The harness: reserve, supply check, WiFi profile, loop or once, stop, restore, ONE report |
 | `run_night.py --recover [RUN_DIR]` | bench host | After a crash / kill -9 of the harness: plug ON, WiFi restored, lock removed |
 | `shelly.py status\|on\|off\|cycle PLUG` | any host on the LAN | Shelly Plug M Gen3: Test1/Test2 only, self-restoring cuts |
-| `mango.py check\|set PROFILE [--for S]\|restore\|show` | any host with the Mango's ssh key | WiFi-degradation profiles on the GL.iNet Mango 2 |
+| `mango.py check\|show\|reserve\|release\|set PROFILE [--for S]\|restore` | a host with the Mango's ssh key | WiFi-degradation profiles on the GL.iNet Mango 2, with a router-side lock |
 | `examples/*.toml` | - | Self-test, power-cut soak, weak-WiFi run |
 
 ## 0. One-time setup (per rig)
@@ -21,15 +21,20 @@ bench notes (`tools.md`), not here. No credentials go in any file here.
 2. Python 3.11 or newer (TOML configs). Older: write the config as JSON.
 3. `export BENCH_SUDO_PW=...` in the shell that starts the run (for `dmesg`), unless sudo is passwordless.
 4. Shelly: nothing to install. Know which testing plug feeds THIS rig's J1 (`shelly.py status all`, tools.md table).
-5. Mango 2 (only for WiFi runs): the bench host's ssh public key is in the Mango's root `authorized_keys`
-   (Christopher adds it once); `MANGO_HOST` set; `python3 mango.py check` lists what works and, under
-   `cannot`, what the router firmware cannot do (for example netem missing: `opkg install tc kmod-netem`).
-   The brain under test is joined to the Mango SSID.
+5. Mango 2 (only for WiFi runs): site facts (address, test SSID, access, KNOWN STATE, reservation) are in the
+   private bench notes, section "GL.iNet Mango 2" - read it first. The bench host's ssh public key is in the
+   Mango's root `authorized_keys`; `python3 mango.py check` lists what works and, under `cannot`, what the
+   router cannot do. The brain under test is joined to the Mango's test SSID.
+   **Reserve before you degrade:** `MANGO_OWNER=me python3 mango.py reserve --owner me --minutes 90`, then
+   `set` / `restore` (they refuse without the lock), then `release`. `show` exits 0 only in the known state.
+   `run_night.py` with `wifi_profile` does all of this itself.
 
 ## 1. Before the run (5 minutes, with the setup message)
 
 - Newest code on the rig (brain, modules, PicoHub): check, or say in the report why not.
 - Nobody else on the rig: `~/BENCH_IN_USE` absent (the harness refuses to start otherwise).
+- **The right brain:** set `expect_device` (device name or CPU id from `/rpc hello`). A home-LAN scan can find a
+  different brain than the one on your rig (17 Nov 2026: a pilot ran against the cellar brain).
 - `python3 run_night.py my.toml --dry-run`: config valid, plug answers. Then one short real pilot
   (`examples/selftest_pi4rfid.toml`, 2-15 min) if the rig or the config is new.
 - Tell Christopher in ONE line: what runs, on which rig, until when (clock time), log path, what you do at the end.
@@ -69,6 +74,8 @@ QA-Testing `runs/` (it already has `results.csv` + `environment.txt` in the cata
 | `wifi_hold_router_timer` | false | the Mango restores itself after `max_hours` + 10 min, even if the host dies |
 | `supply_check_every_s` | 1800 | a new undervoltage line in dmesg stops the run (INVALID-SUPPLY) |
 | `brain_ip`, `env` | -, {} | passed to the command |
+| `expect_device` | - | text the brain's `/rpc hello` must contain (device name / CPU id); else WRONG-BRAIN, nothing runs |
+| `usb_cut_hub` | - | also cut USB VBUS (`uhubctl -l HUB`, ganged) during each plug cut, for a Pico fed by the Pi's USB |
 
 ## Safety rules the harness enforces
 
@@ -83,5 +90,6 @@ QA-Testing `runs/` (it already has `results.csv` + `environment.txt` in the cata
 
 - `once` mode checks STOP and the supply only at the end (the long command owns the night).
 - Mango shaping acts on traffic towards the brain only (egress of the AP interface); upload-only shaping needs an ifb.
-- The Mango part was written before the router was on the network: `mango.py check` on the real router is
-  the first step of its first use, and its results go into this file.
+- A weak profile lowers what the router SENDS; the brain's own RSSI is not guaranteed: record `status.link.rssi`.
+- The Mango rebooted twice on 17 Nov 2026: a reboot clears the profile and the lock and drops the brain's WiFi for
+  a minute, so a single FAIL in a WiFi run can be the router - check its uptime before blaming the product.

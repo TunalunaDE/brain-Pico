@@ -16,4 +16,5 @@ command = "test \"$FAIL\" != 1 && python3 ../../rpc_call.py $BRAIN_IP hello"
 command_timeout_s = 30
 stop_after_fails = 2
 brain_ip = "SET-ME"   # DHCP, not reserved: find it with ../diag/find_brain.py ""
+expect_device = "SET-ME"     # device name from /rpc hello: refuses to run on another brain
 env = { FAIL = "0" }

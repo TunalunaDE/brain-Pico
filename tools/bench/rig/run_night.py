@@ -23,6 +23,12 @@
 #   * supply check (vcgencmd get_throttled + dmesg undervoltage count) at start, every
 #     `supply_check_every_s` and at the end; a NEW undervoltage stops the run (result INVALID-SUPPLY)
 #   * never runs regress_all.sh (refused in `command`)
+#   * `expect_device`: before anything is touched, /rpc hello on `brain_ip` must contain this text (the brain's
+#     device name or CPU id) - otherwise result WRONG-BRAIN and nothing runs (17 Nov: a run hit the wrong brain)
+#   * `wifi_profile` takes the Mango's router-side lock (mango.py reserve) for max_hours + 15 min and releases
+#     it after the restore; a held lock = the run does not start
+#   * `usb_cut_hub` (e.g. "2" on a Pi 4 = ALL USB ports, ganged): VBUS is cut together with the plug cut, for a
+#     Pico fed by the Pi's USB; always switched back ON (end, crash, --recover)
 # Output: RUN_DIR = ~/runs/<date>_<test_id>_<rig>/ : REPORT.md (read this in the morning),
 #   results.csv (QA-Testing format: id,result,duration_s,reason,log), cycles.jsonl, harness.log,
 #   environment.txt (start/end supply, plug, WiFi profile, git revision), logs/cycle_NNNN.log.
@@ -43,7 +49,7 @@ LOCK = os.path.expanduser("~/BENCH_IN_USE")
 DEFAULTS = dict(mode="loop", rig="unknown", test_id="T-UNSET", max_hours=8.0, plug="", cut_seconds=5,
                 max_cuts_per_hour=20, cycle_every_s=300, settle_s=60, command="", command_timeout_s=600,
                 stop_after_fails=3, wifi_profile="", wifi_hold_router_timer=False, supply_check_every_s=1800,
-                brain_ip="", fail_marker="", env={})
+                brain_ip="", fail_marker="", env={}, expect_device="", usb_cut_hub="")
 STOP = {"why": None}
 
 
@@ -72,6 +78,15 @@ def sudo(cmd):
     if pw:
         return subprocess.run(["sudo", "-S", "-p", ""] + cmd, input=pw + "\n", capture_output=True, text=True, timeout=30)
     return subprocess.run(["sudo", "-n"] + cmd, capture_output=True, text=True, timeout=30)
+
+
+RPC_CALL = os.path.join(HERE, "..", "..", "rpc_call.py")
+
+
+def usb_power(hub, on):
+    """uhubctl VBUS switch of a whole hub (Pi 4: hub 2 = all ports, ganged). Returns the uhubctl tail."""
+    r = sudo(["uhubctl", "-l", str(hub), "-a", "on" if on else "off"])
+    return (r.stdout + r.stderr).strip().splitlines()[-1:] if (r.stdout or r.stderr) else []
 
 
 def supply():
@@ -123,6 +138,7 @@ class Run:
 
     def _save_state(self, phase):
         json.dump({"pid": os.getpid(), "phase": phase, "plug": self.c["plug"], "wifi": self.c["wifi_profile"],
+                   "mango_owner": getattr(self, "mango_owner", ""), "usb_cut_hub": self.c["usb_cut_hub"],
                    "lock_mine": getattr(self, "lock_mine", False)}, open(self.state, "w"))
 
     # -- reservation -------------------------------------------------------------------------------------
@@ -148,9 +164,15 @@ class Run:
             if not self._cut_allowed():
                 rec["cut"] = "skipped (max_cuts_per_hour)"
             else:
-                s_off, s_on = shelly.cycle(c["plug"], c["cut_seconds"])
+                if c["usb_cut_hub"]:
+                    usb_power(c["usb_cut_hub"], False)
+                try:
+                    s_off, s_on = shelly.cycle(c["plug"], c["cut_seconds"])
+                finally:
+                    if c["usb_cut_hub"]:
+                        usb_power(c["usb_cut_hub"], True)
                 self.cuts.append(time.time())
-                rec["cut"] = {"plug": c["plug"], "seconds": c["cut_seconds"], "w_before_off": s_off.get("apower_w"),
+                rec["cut"] = {"plug": c["plug"], "usb_hub": c["usb_cut_hub"] or None, "seconds": c["cut_seconds"], "w_before_off": s_off.get("apower_w"),
                               "w_after_on": s_on.get("apower_w") if s_on else None}
             self._sleep(c["settle_s"])
         rec.update(self._run_cmd(c["command"], c["command_timeout_s"], "cycle_%04d.log" % n))
@@ -215,11 +237,24 @@ class Run:
             self.result, self.reason = "DRY-RUN", "config checked only"
             return
         self.reserve()
+        if c["expect_device"]:
+            hello = self._run_cmd("python3 %s %s hello" % (RPC_CALL, c["brain_ip"]), 30, "brain_check.log")
+            txt = open(os.path.join(self.dir, hello["log"]), errors="replace").read()
+            if c["expect_device"] not in txt:
+                self.result = "WRONG-BRAIN"
+                STOP["why"] = "brain at %s did not answer as %r (see logs/brain_check.log): nothing was run" % (c["brain_ip"], c["expect_device"])
+                self.log(STOP["why"])
+                return
+            self.log("brain check OK: %s answers as %s" % (c["brain_ip"], c["expect_device"]))
         self.supply0 = supply()
         self.log("supply start %s" % json.dumps(self.supply0))
         if c["plug"]:
             self.log("plug start %s" % json.dumps(shelly.ensure_on(c["plug"])))
         if c["wifi_profile"]:
+            self.mango_owner = "run_night:%s:%s" % (c["test_id"], os.uname().nodename)
+            os.environ["MANGO_OWNER"] = self.mango_owner
+            self.log("mango lock %s" % json.dumps(mango.reserve(self.mango_owner, int(c["max_hours"] * 60) + 15, self.dir)))
+            self._save_state("mango-reserved")
             hold = int(c["max_hours"] * 3600) + 600 if c["wifi_hold_router_timer"] else None
             self.log("wifi profile %s: %s" % (c["wifi_profile"], json.dumps(mango.set_profile(c["wifi_profile"], hold))))
         self._save_state("running")
@@ -271,9 +306,18 @@ class Run:
             if c["plug"]:
                 self.plug_end = shelly.ensure_on(c["plug"])
                 self.log("plug end %s" % json.dumps(self.plug_end))
-            if c["wifi_profile"]:
+            if c["usb_cut_hub"]:
+                self.log("usb hub %s ON at end: %s" % (c["usb_cut_hub"], usb_power(c["usb_cut_hub"], True)))
+            if getattr(self, "mango_owner", ""):
                 self.wifi_end = mango.ensure_restored()
                 self.log("wifi restored %s" % json.dumps(self.wifi_end))
+                if self.wifi_end.get("known_state"):
+                    try:
+                        self.log("mango lock released %s" % json.dumps(mango.release(self.mango_owner)))
+                    except Exception as e:
+                        self.log("mango lock NOT released: %s" % e)
+                else:
+                    self.log("mango NOT in known state: lock kept so nobody uses a degraded router; fix by hand")
             self.supply1 = supply()
             self.log("supply end %s" % json.dumps(self.supply1))
             u0, u1 = (self.supply0 or {}).get("undervoltage_lines"), self.supply1.get("undervoltage_lines")
@@ -333,8 +377,16 @@ def recover(run_dir):
     out = {"run_dir": run_dir, "state": st}
     if st.get("plug"):
         out["plug"] = shelly.ensure_on(st["plug"])
-    if st.get("wifi"):
+    if st.get("usb_cut_hub"):
+        out["usb"] = usb_power(st["usb_cut_hub"], True)
+    if st.get("mango_owner"):
+        os.environ["MANGO_OWNER"] = st["mango_owner"]
         out["wifi"] = mango.ensure_restored()
+        if out["wifi"].get("known_state"):
+            try:
+                out["mango_lock"] = mango.release(st["mango_owner"])
+            except Exception as e:
+                out["mango_lock"] = "not released: %s" % e
     if os.path.exists(LOCK) and "run_night" in open(LOCK).read() and run_dir in open(LOCK).read():
         os.remove(LOCK)
         out["lock"] = "removed"
