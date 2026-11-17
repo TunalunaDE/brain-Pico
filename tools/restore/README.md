@@ -50,6 +50,7 @@ It ends with `RESTORE OK` (and exit code 0) or `RESTORE FAILED`.
 | `erase_fs.py` | Pico | `storage.erase_filesystem()`. Destroys all files; the board resets itself. |
 | `hard_reset.py` | Pico | A real reset, so `boot.py` runs again (a soft reload does not). |
 | `clear_strikes.py` | Pico | Sets the three-strikes crash counter (nvm byte 0) back to 0. |
+| `lib_reset.py` + `lib_push.sh [DIR]` + `lib_import_check.py` | Pico / host | Only `/lib` is broken (e.g. `ImportError: adafruit_httpserver` after power-pull tests): park it as `/lib_bad`, put the pinned `software/lib` `.mpy` back, prove the imports. No reformat, nothing else touched. |
 | `verify_brain.py` | Pico | "Does this brain work?": lists `/lib` (size, CRC), imports the modules `code.py` needs, compiles the installed product (catches `MemoryError`), enumerates the I2C modules on the *configured* pins and compares them with the modules the brain remembers (none answering = wrong pins or dead bus = FAILED), checks the strike counter is 0. Prints `VERIFY OK` / `VERIFY FAILED`. |
 
 The Pico-side scripts run through `tools/pico.py run <file>`.

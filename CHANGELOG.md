@@ -7,6 +7,7 @@ Convention: Confluence "Development Conventions" (SD space, page 120160257).
 ## tools - 2026-11-17
 
 - DEV-77 - bench-host scripts that existed only on the Pi4RFID bench host and the agents' box are now in git (`tools/bench/night/`, `power/`, `thermal/`, `diag/`, `tools/agent-hq/`, `tools/soak/gate_night.sh`), each with a header saying what it proves and how to run it; hard-coded sudo passwords and host paths removed. Bench tools only, nothing on the brain changes. Breaking: no.
+- DEV-77 (part 2, old Pi4 bench host) - `tools/bench/diag/` gains scan_bus, find_module, pullup_probe, read_fw_log, dump_log, tail_log; `tools/restore/lib_reset.py` + `lib_push.sh` + `lib_import_check.py` (repair a broken /lib without a reformat); `tools/bench/host/wifi_add.sh`. Bootloader, Display and LEDs 16x helpers went to their own repos. Breaking: no.
 - DEV-242 - unattended rig runs: `tools/bench/rig/` = run harness (`run_night.py`: reserve, supply check, loop or once, safe stop, one morning report in the QA-Testing run format), Shelly Plug M control (`shelly.py`, self-restoring power cuts, refuses non-test plugs) and GL.iNet Mango 2 WiFi profiles (`mango.py`, not yet proven on the router). Runbook: `tools/bench/rig/RUNBOOK.md`. Breaking: no.
 ## code.py 0.44 - 2026-11-16
 
