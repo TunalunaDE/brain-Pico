@@ -13,7 +13,8 @@ bench notes (`tools.md`), not here. No credentials go in any file here.
 | `run_night.py --recover [RUN_DIR]` | bench host | After a crash / kill -9 of the harness: plug ON, WiFi restored, lock removed |
 | `shelly.py status\|on\|off\|cycle PLUG` | any host on the LAN | Shelly Plug M Gen3: Test1/Test2 only, self-restoring cuts |
 | `mango.py check\|show\|reserve\|release\|set PROFILE [--for S]\|restore` | a host with the Mango's ssh key | WiFi-degradation profiles on the GL.iNet Mango 2, with a router-side lock |
-| `examples/*.toml` | - | Self-test, power-cut soak, weak-WiFi run |
+| `check_after_cut.py IP --device ID --max-uptime S --modules a,b` | bench host | Per-cycle check for power-cut runs: right brain back, uptime below S (the cut REALLY reset the Pico), all modules, no strikes or faults. One line, exit 0/1 |
+| `examples/*.toml` | - | Self-test, power-cut soak (plug + USB cut), weak-WiFi run |
 
 ## 0. One-time setup (per rig)
 
