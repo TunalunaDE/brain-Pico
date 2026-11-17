@@ -49,6 +49,7 @@ Bench-host scripts taken into git by DEV-77 (17 Nov 2026; they existed only on P
 | `diag/scan_bus.py`, `diag/pullup_probe.py`, `diag/find_module.py` | Pico | raw scan per pin pair; "no pull-ups" vs "module silent"; find a module waiting at 0x7F (only enumeration sees it). |
 | `diag/read_fw_log.py`, `diag/dump_log.py`, `diag/tail_log.py` | Pico | `/log.txt` since the last boot / last 6 KB / last 14 lines (needs `/debug_log`). |
 | `gate/gate_chain.sh IP` + `gate/gate_enum.py`, `gate/gate_rpc_settings.py`, `gate/gate_rpc_stress.py` | host (noknok-pi rig) | Release-gate chain (Bob, v1.3.0): SWD restore of the published images, S/M bench tests, /rpc + mDNS + due-boot checks, then a power-cut soak until 08:30; restart-proof (`~/gate/state`). Needs `BENCH_SUDO_PW`. |
+| `dev32/bench_h_*.py`, `dev32/bench_p2_*.py` | Pico | DEV-32 failure-state setups (offline product, self-heal, cache-first OTA, buzzer alert, per-module gate). Pre-ADR-003 paths: see `dev32/README.md`. |
 | `night/leakwatch.py IP HOURS OUT` | host | Overnight memory-slope watch of a running brain over /rpc only (hello 2 s, settings.get 3 s, status 60 s): mem_free trend, link stats, resets (DEV-181). |
 | `host/wifi_add.sh` | bench host | Add a NEW WiFi profile with NetworkManager; the person types the password (agents never). Existing profiles untouched. |
 
