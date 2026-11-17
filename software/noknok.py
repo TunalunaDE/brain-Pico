@@ -159,6 +159,10 @@
 #             the bus powered); busio.I2C then failed and the whole bus was skipped.
 #             _bus_clear() clocks SCL (max 9) until SDA is free, then sends a STOP. A bus
 #             that is switched off (SDA and SCL both low) is left alone.
+# v1.28 (Sam, exploration, DEV-246): new modules get addresses from a pool that
+#             avoids THIRDPARTY_ADDRESSES (48 popular Qwiic / Stemma QT addresses), so a
+#             board plugged in later cannot collide. Fallback to those addresses only when
+#             the 56 others are taken; saved addresses never move; never past 0x77.
 #
 # Quick start:
 #   from noknok import Conductor
@@ -179,7 +183,7 @@ import json
 import os
 import struct
 
-__version__ = "1.27"
+__version__ = "1.28"
 
 try:
     import storage            # CircuitPython only; absent on a host Python
@@ -1394,6 +1398,32 @@ class Conductor:
     ENUM_ADDR  = 0x7F
     ASSIGN_REG = 0x1D
 
+    # DEV-246 (RDM-13): default / fixed addresses of popular third-party Qwiic and
+    # Stemma QT boards. New noknok modules get these only when every other address
+    # is taken, so a board plugged in LATER does not collide with a noknok module
+    # (DEV-119 only protects boards present at enumeration). One space across both
+    # buses. Checked 17 Nov 2026 against Adafruit's I2C address list
+    # (github.com/adafruit/I2C_Addresses) and SparkFun's Qwiic auto-detect table
+    # (OpenLog Artemis autoDetect.ino). 48 here + 0x50-0x57 (brain FRAM) leave 56
+    # addresses before the fallback. The same list is in Ecosystem software/enumeration.md.
+    THIRDPARTY_ADDRESSES = frozenset((
+        0x0B, 0x0C,                         # LC709203F fuel gauge, MLX90393 magnetometer
+        0x10, 0x12,                         # VEML7700 / VEML6075 / PA1010D GPS, PMSA003I
+        0x18, 0x19,                         # LIS3DH / MCP9808 / LIS331 / MPR pressure
+        0x1C, 0x1D, 0x1E, 0x1F,             # MMA845x, ADXL343/345, LIS2MDL / LSM303 / HMC5883, KX134
+        0x20, 0x23, 0x26, 0x28,             # MCP23017, BH1750, MSA301, BNO055
+        0x29, 0x2A,                         # VL53L0X / VL53L1X / TSL2591 / TCS34725, NAU7802 scale
+        0x30, 0x33, 0x36,                   # Soldered easyC / MMC5983MA, MLX90640, seesaw / MAX17048
+        0x38, 0x39, 0x3C, 0x3D,             # AHT20, APDS9960 / AS7341, SSD1306 / SH1107 OLED
+        0x40, 0x42, 0x44, 0x45,             # INA219 / HTU21D / Si7021, u-blox GPS, SHT4x / SHT3x
+        0x48, 0x49, 0x4A, 0x4B,             # ADS1x15 / TMP102 / TMP117 / ADT7410 / PCT2075
+        0x58, 0x59,                         # SGP30 / AW9523, SGP40
+        0x5A, 0x5B, 0x5C, 0x5D,             # MPR121, CCS811, AM2320 / BH1750 alt, LPS22
+        0x60, 0x61, 0x62,                   # MCP4725 / VCNL4040 / MCP9600, SCD30, SCD4x / MSA311
+        0x68, 0x69, 0x6A, 0x6B, 0x6F,       # DS3231 / MPU6050, ICM20948, LSM6DSOX / ISM330, Qwiic Button
+        0x70, 0x76, 0x77,                   # TCA9548 mux / HT16K33 / SHTC3, BME280 / BMP388
+    ))
+
     TYPE_BUZZER    = 0x01
     TYPE_KNOB      = 0x02
     TYPE_LEDBUTTON = 0x03
@@ -2363,9 +2393,20 @@ class Conductor:
         def pick_address(uid_hex):
             a = known.get(uid_hex, {}).get("address") if isinstance(known.get(uid_hex), dict) else None
             if not a or a in used:
-                a = 0x08
-                while a in used or a in reserved or 0x50 <= a <= 0x57:   # 0x50-57 = brain FRAM
-                    a += 1
+                # DEV-246: first pass avoids the third-party addresses, the second
+                # pass may use them. A saved address is kept (modules never move).
+                a = None
+                for avoid in (self.THIRDPARTY_ADDRESSES, ()):
+                    for cand in range(0x08, 0x78):
+                        if (cand in used or cand in reserved or cand in avoid
+                                or 0x50 <= cand <= 0x57):            # 0x50-57 = brain FRAM
+                            continue
+                        a = cand
+                        break
+                    if a is not None:
+                        break
+                if a is None:
+                    return None                  # all 104 addresses taken
             used.add(a)
             return a
 
@@ -2402,6 +2443,11 @@ class Conductor:
                 uid_hex     = bytes(buf[:8]).hex()
                 module_type = buf[8]
                 addr        = pick_address(uid_hex)
+                if addr is None:                 # DEV-246: never assign past 0x77
+                    _print("  [enum] no free I2C address left - module %s stays unassigned"
+                           % uid_hex)
+                    quiet_ms[bus_name] = no_resp_limit   # stop polling this bus
+                    continue
 
                 # Assign address - on the bus the module answered on
                 self._write(self.ENUM_ADDR, [self.ASSIGN_REG, addr], bus)
