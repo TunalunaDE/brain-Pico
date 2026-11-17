@@ -154,7 +154,7 @@
 #             the others. check_factory_reset() only wipes after the knobs verified.
 #             set_event_hook() lets code.py record the events. A pass that
 #             round-tripped the PicoHub ends in hard_reset() (fresh USB host, DEV-133).
-# v1.27 (Sam, exploration RDM-13 WP1): I2C bus clear in _init_i2c(). A third-party
+# v1.27 (Sam, exploration, DEV-245): I2C bus clear in _init_i2c(). A third-party
 #             chip interrupted mid-read holds SDA low through a Pico reset (PicoHub keeps
 #             the bus powered); busio.I2C then failed and the whole bus was skipped.
 #             _bus_clear() clocks SCL (max 9) until SDA is free, then sends a STOP. A bus
