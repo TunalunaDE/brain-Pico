@@ -4,6 +4,10 @@ Newest first. One entry per version bump, written in the same commit as the bump
 `## <version> - <date>` then `- DEV-xx - what changed and why. Breaking: yes/no.`
 Convention: Confluence "Development Conventions" (SD space, page 120160257).
 
+## tools - 2026-11-17
+
+- DEV-77 - bench-host scripts that existed only on the Pi4RFID bench host and the agents' box are now in git (`tools/bench/night/`, `power/`, `thermal/`, `diag/`, `tools/agent-hq/`, `tools/soak/gate_night.sh`), each with a header saying what it proves and how to run it; hard-coded sudo passwords and host paths removed. Bench tools only, nothing on the brain changes. Breaking: no.
+- DEV-242 - unattended rig runs: `tools/bench/rig/` = run harness (`run_night.py`: reserve, supply check, loop or once, safe stop, one morning report in the QA-Testing run format), Shelly Plug M control (`shelly.py`, self-restoring power cuts, refuses non-test plugs) and GL.iNet Mango 2 WiFi profiles (`mango.py`, not yet proven on the router). Runbook: `tools/bench/rig/RUNBOOK.md`. Breaking: no.
 ## code.py 0.44 - 2026-11-16
 
 - DEV-128 - a fix to the PicoHub power manager's stage-1 bootloader (CH32X035) now reaches fielded boards over the air, like the CH32V003 one. The module registry (Ecosystem `modules.json` 2.0.0) lists one stage-1 per chip family; the brain downloads each, keeps one cache slot per flash layout (`/data/fw_stage1_<layout>.bin`), and gives every module the stage-1 whose layout equals the layout it reports itself (never cross-family; no match = skipped silently). The PicoHub's cached app is restored after its stage-1 update. Old brains ignore the new registry shape (no stage-1, app updates unaffected). Host tests in `tools/test_rescue_paths.py`; bench result in the Jira hand-off. Breaking: no. The old cache file `fw_stage1.bin` is now unused.

@@ -1,0 +1,19 @@
+# SPDX-FileCopyrightText: 2026 noknok (Christopher Houben)
+# SPDX-License-Identifier: MIT
+# Harness self-test (DEV-242 acceptance 1, 2, 4 in small): 4 short cycles, a 3 s cut on Testing Plug 2
+# (Pi4RFID J1 slot), check = the brain answers /rpc hello. Set FAIL=1 in env to prove a failure stops it.
+# python3 run_night.py examples/selftest_pi4rfid.toml
+mode = "loop"
+rig = "pi4rfid"
+test_id = "T-RIG-SELFTEST"
+max_hours = 0.25
+plug = "Test2"
+cut_seconds = 3
+max_cuts_per_hour = 20
+cycle_every_s = 30
+settle_s = 5
+command = "test \"$FAIL\" != 1 && python3 ../../rpc_call.py $BRAIN_IP hello"
+command_timeout_s = 30
+stop_after_fails = 2
+brain_ip = "SET-ME"   # DHCP, not reserved: find it with ../diag/find_brain.py ""
+env = { FAIL = "0" }

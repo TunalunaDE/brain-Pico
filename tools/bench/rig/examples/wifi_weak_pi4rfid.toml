@@ -1,0 +1,18 @@
+# SPDX-FileCopyrightText: 2026 noknok (Christopher Houben)
+# SPDX-License-Identifier: MIT
+# WiFi-degraded run (DEV-242 acceptance 3, DEV-220 / DEV-238): the brain is joined to the Mango 2 SSID;
+# the Mango goes to profile "weak" for the run and back to "good" at the end (the router also restores
+# itself after max_hours + 10 min: wifi_hold_router_timer). Check = /rpc hello every 60 s.
+# Needs: MANGO_HOST in the environment, the bench host's ssh key on the Mango (RUNBOOK.md step 0).
+mode = "loop"
+rig = "pi4rfid"
+test_id = "T-BRAIN-004"
+max_hours = 1
+wifi_profile = "weak"
+wifi_hold_router_timer = true
+cycle_every_s = 60
+settle_s = 0
+command = "python3 ../../rpc_call.py $BRAIN_IP hello"
+command_timeout_s = 30
+stop_after_fails = 5
+brain_ip = "SET-ME (the brain's address on the Mango LAN)"

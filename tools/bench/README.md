@@ -25,6 +25,30 @@ Rules that cost time to learn:
 - Keep logs and backups in `~/` on the Pi, not `/tmp` (wiped on reboot).
 - `wifi.json` holds a real WiFi password: never print it, delete host copies after a test.
 
+Unattended runs (DEV-242): `rig/` = run harness, Shelly plug control, Mango 2 WiFi profiles. Start with
+[`rig/RUNBOOK.md`](rig/RUNBOOK.md) ("how to start an overnight run").
+
+Bench-host scripts taken into git by DEV-77 (17 Nov 2026; they existed only on Pi4RFID / agent-hq):
+
+| File | Runs on | What it does |
+|---|---|---|
+| `night/dev179_night.sh IP N` + `night/bench_dev179_night.py` | host (Pi4RFID, Debug Probe) | DEV-179 night A/B: N app reboots, radio-off vs plain arm, usbmon, SWD dump/reset on a hang (hooks in `probe/`, branch `dev-172-probe`), supply check at start/end. |
+| `night/dev179_report.py CYCLES.jsonl` | host | Per-arm summary of a DEV-179 night (resets seen, console wedges, hangs). |
+| `night/rpc_status_power.py IP` | host | One line of PicoHub power data from `/rpc status`. |
+| `power/usb_powercycle.sh [OFF] [HUB] [PORT]` | host (Pi 4) | Cold boot via uhubctl VBUS cut (default hub 2, ganged) and wait for the Pico port. Not a J1 cut: use `rig/shelly.py`. |
+| `power/reboot_loop.py IP N` | host | N app reboots; time to `hello` + modules back. |
+| `power/rpc_cutwatch.py IP SECONDS` | host | DEV-169: after a reset, `hello` 1/s + `status`; logs cut replies and ping. |
+| `thermal/max31856_log.py` | host (Pi, SPI) | MAX31856 thermocouple logger (DEV-146), rejects corrupt samples. |
+| `thermal/picohub_thermal_log.py` | Pico | MOD-0011 thermal run: holds the input contract, logs rails/currents/temperature. |
+| `thermal/picohub_clear_faults.py` | Pico | Clears the PicoHub's latched faults (CLEAR_FAULTS 0x12). |
+| `diag/ver_check.py` | Pico | Read-only versions on the rig: CircuitPython, code.py, noknok, PicoHub power manager (rule "newest code first"). |
+| `diag/i2c_scan_pins.py`, `diag/scan_7f.py`, `diag/probe_bus.py` | Pico | I2C scan on every common pin pair; 0x7F/0x7E probe on bus A; Conductor addresses per type. |
+| `diag/nvm_dump.py`, `diag/fs_walk.py`, `diag/env_check.py` | Pico | Read-only: nvm crash counter + OTA stamp; filesystem tree; parsed `settings.toml`. |
+| `diag/find_brain.py NAME_PART` | host | Finds the brain on the /24 by `/rpc hello` (DHCP addresses move). |
+| `diag/rpc_status_timing.py IP N [load]`, `diag/rpc_hello.py IP` | host | DEV-181 `status` timing in phases; one raw `hello`. |
+
+`tools/agent-hq/`: `provision_agents_box.sh` (first setup of the agents' Ubuntu box), `usbpower_test.sh`, `adb_ui_dump.sh` (test-tablet screen texts). `tools/soak/gate_night.sh IP` = release-gate night (reset loop + power-cut soak + verdict).
+
 DEV-97 / DEV-74 bench scripts (Bob, 19 Oct 2026; all run with `pico.py run`):
 
 | File | What it does |

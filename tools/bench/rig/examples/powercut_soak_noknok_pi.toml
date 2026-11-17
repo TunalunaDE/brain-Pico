@@ -1,0 +1,23 @@
+# SPDX-FileCopyrightText: 2026 noknok (Christopher Houben)
+# SPDX-License-Identifier: MIT
+# N-tier overnight power-cut run on the noknok-pi rig (old Pi 4, J1 on Testing Plug 1) - shape for
+# T-PWR-003 / DEV-230: every 6 min a 5 s J1 cut, then 90 s settle, then one soak iteration on the Pico
+# (tools/soak) must find every module. 8 h = ~80 cuts (limit 20/h).
+# Run from tools/bench/rig/:  nohup python3 run_night.py examples/powercut_soak_noknok_pi.toml > ~/runs/nohup.out 2>&1 &
+mode = "loop"
+rig = "noknok-pi"
+test_id = "T-PWR-003"
+max_hours = 8
+plug = "Test1"
+cut_seconds = 5
+max_cuts_per_hour = 20
+cycle_every_s = 360
+settle_s = 90
+# NOT YET PROVEN (old Pi offline on 17 Nov): confirm the PASS criterion of one soak_probe iteration with
+# Bob (the @@NK@@ line); soak_run.py's own baseline check is the reference.
+command = "cd ../../soak && python3 ../pico.py run soak_probe.py 120 | grep -q '\"ok\": true'"
+command_timeout_s = 240
+stop_after_fails = 3
+supply_check_every_s = 1800
+brain_ip = ""
+# fail_marker = "Traceback"     # optional regex: a PASS whose log contains it counts as FAIL
