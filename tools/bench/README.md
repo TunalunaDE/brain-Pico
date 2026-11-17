@@ -48,6 +48,8 @@ Bench-host scripts taken into git by DEV-77 (17 Nov 2026; they existed only on P
 | `diag/rpc_status_timing.py IP N [load]`, `diag/rpc_hello.py IP` | host | DEV-181 `status` timing in phases; one raw `hello`. |
 | `diag/scan_bus.py`, `diag/pullup_probe.py`, `diag/find_module.py` | Pico | raw scan per pin pair; "no pull-ups" vs "module silent"; find a module waiting at 0x7F (only enumeration sees it). |
 | `diag/read_fw_log.py`, `diag/dump_log.py`, `diag/tail_log.py` | Pico | `/log.txt` since the last boot / last 6 KB / last 14 lines (needs `/debug_log`). |
+| `gate/gate_chain.sh IP` + `gate/gate_enum.py`, `gate/gate_rpc_settings.py`, `gate/gate_rpc_stress.py` | host (noknok-pi rig) | Release-gate chain (Bob, v1.3.0): SWD restore of the published images, S/M bench tests, /rpc + mDNS + due-boot checks, then a power-cut soak until 08:30; restart-proof (`~/gate/state`). Needs `BENCH_SUDO_PW`. |
+| `night/leakwatch.py IP HOURS OUT` | host | Overnight memory-slope watch of a running brain over /rpc only (hello 2 s, settings.get 3 s, status 60 s): mem_free trend, link stats, resets (DEV-181). |
 | `host/wifi_add.sh` | bench host | Add a NEW WiFi profile with NetworkManager; the person types the password (agents never). Existing profiles untouched. |
 
 `tools/agent-hq/`: `provision_agents_box.sh` (first setup of the agents' Ubuntu box), `usbpower_test.sh`, `adb_ui_dump.sh` (test-tablet screen texts). `tools/soak/gate_night.sh IP` = release-gate night (reset loop + power-cut soak + verdict).

@@ -135,3 +135,5 @@ Full capture run, 26-27 Oct 2026 (15:35-09:00, ends by itself with `--until 09:0
 power_on every time. With the daytime run that is about 2000 clean iterations after
 the 7 failures of the first night, so the first night's failures are NOT reproducible
 on this rig. The capture stays armed.
+
+`soak_an.py SOAK.jsonl` - quick summary of a `soak_run.py` log (scenario x result counts, record continuity, time span). DEV-77.
