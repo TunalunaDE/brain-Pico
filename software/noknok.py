@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 noknok (Christopher Houben)
+# SPDX-License-Identifier: MIT
+#
 # noknok.py  v1.9
 # CircuitPython library for the noknok modular ecosystem
 # Raspberry Pi Pico — I2C master ("Conductor")
@@ -151,6 +154,11 @@
 #             the others. check_factory_reset() only wipes after the knobs verified.
 #             set_event_hook() lets code.py record the events. A pass that
 #             round-tripped the PicoHub ends in hard_reset() (fresh USB host, DEV-133).
+# v1.27 (Sam, exploration RDM-13 WP1): I2C bus clear in _init_i2c(). A third-party
+#             chip interrupted mid-read holds SDA low through a Pico reset (PicoHub keeps
+#             the bus powered); busio.I2C then failed and the whole bus was skipped.
+#             _bus_clear() clocks SCL (max 9) until SDA is free, then sends a STOP. A bus
+#             that is switched off (SDA and SCL both low) is left alone.
 #
 # Quick start:
 #   from noknok import Conductor
@@ -171,7 +179,7 @@ import json
 import os
 import struct
 
-__version__ = "1.26"
+__version__ = "1.27"
 
 try:
     import storage            # CircuitPython only; absent on a host Python
@@ -1315,6 +1323,54 @@ def _crc8(data):
 
 
 # ═════════════════════════════════════════════════════════════════════════════
+def _bus_clear(sda_pin, scl_pin):
+    """I2C bus clear (NXP UM10204 3.1.16) before busio takes the pins. A chip that
+    was in the middle of a register read when the brain was interrupted (soft
+    reload, crash, Ctrl-C, Pico reset while the PicoHub keeps the bus powered)
+    holds SDA low forever, and busio.I2C then fails with "No pull up found": the
+    whole bus is skipped. RDM-13 bench, 16 Nov 2026: an Adafruit VEML7700 did this
+    6/6 times after an interrupted write-then-read; noknok modules never (0/12).
+    One SCL pulse released it.
+    Returns 0 = SDA free (nothing done), n = released after n SCL pulses,
+    -1 = still held low after 9 pulses, -2 = SCL low as well: the bus is switched
+    off or has no pull-ups (a PicoHub bus rail that is off reads SDA = SCL = 0,
+    RDM-13 bench 17 Nov 2026) - not clocked, busio then reports the bus.
+    Recovery only - digitalio never carries I2C traffic."""
+    try:
+        import digitalio
+        sda = digitalio.DigitalInOut(sda_pin)
+    except Exception:
+        return 0                          # pin busy / host Python: nothing to do
+    try:
+        sda.switch_to_input()
+        if sda.value:
+            return 0
+        scl = digitalio.DigitalInOut(scl_pin)
+        try:
+            scl.switch_to_input(pull=digitalio.Pull.DOWN)   # pull-down: a floating
+            if not scl.value:                               # line reads low, not random
+                return -2
+            scl.switch_to_output(value=True, drive_mode=digitalio.DriveMode.OPEN_DRAIN)
+            n = -1
+            for i in range(1, 10):
+                scl.value = False
+                time.sleep(0.00001)
+                scl.value = True
+                time.sleep(0.00001)
+                if sda.value:
+                    n = i
+                    break
+            # STOP: SDA rises while SCL is high
+            sda.switch_to_output(value=False, drive_mode=digitalio.DriveMode.OPEN_DRAIN)
+            time.sleep(0.00001)
+            sda.value = True
+            return n
+        finally:
+            scl.deinit()
+    finally:
+        sda.deinit()
+
+
 class Conductor:
     """
     I2C master for the noknok ecosystem.
@@ -1408,6 +1464,13 @@ class Conductor:
             if getattr(self, attr) is not None or not self._bus_pins.get(name):
                 continue
             sda, scl = self._bus_pins[name]
+            n = _bus_clear(sda, scl)          # RDM-13: free a bus a chip holds low
+            if n > 0:
+                _print("[i2c] bus %s: SDA was held low - released after %d clock pulse(s)"
+                       % (name, n))
+            elif n == -1:
+                _print("[i2c] bus %s: SDA held low - still stuck after 9 clock pulses "
+                       "(unplug the boards on this bus)" % name)
             try:
                 setattr(self, attr, busio.I2C(scl, sda, frequency=self._freq))
             except Exception as e:

@@ -4,6 +4,10 @@ Newest first. One entry per version bump, written in the same commit as the bump
 `## <version> - <date>` then `- DEV-xx - what changed and why. Breaking: yes/no.`
 Convention: Confluence "Development Conventions" (SD space, page 120160257).
 
+## noknok.py 1.27 - 2026-11-17
+
+- DEV-tbd (RDM-13 WP1, from the exploration account) - I2C bus clear before a bus is opened. A third-party Qwiic / Stemma QT chip interrupted in the middle of a register read (soft reload, crash, Ctrl-C, Pico reset while the PicoHub keeps the bus powered) holds SDA low; `busio.I2C` then failed with "No pull up found" and the Conductor skipped the whole bus, PicoHub manager included ("check your wiring", 0 modules). `_init_i2c()` now calls `_bus_clear()` first: it clocks SCL (at most 9 pulses, NXP UM10204 3.1.16) until SDA is free, sends a STOP and logs `[i2c] bus A: SDA was held low - released after 1 clock pulse(s)`. A bus that is switched off (PicoHub rail off: SDA and SCL both low) is not clocked and gets no extra log line. Normal boots are unchanged (SDA high = nothing done). Bench (exploration repo `rdm-13-third-party/bench/logs/2026-11-17-boot/` and `-wp1/`): stock 1.26 found 0 modules on the stuck bus, the bus clear 4/4 recovered; switched-off bus B returns -2 (3/3). Host test `tools/test_bus_clear.py`. SPDX header added to `noknok.py`. Breaking: no.
+
 ## tools - 2026-11-17
 
 - DEV-77 - bench-host scripts that existed only on the Pi4RFID bench host and the agents' box are now in git (`tools/bench/night/`, `power/`, `thermal/`, `diag/`, `tools/agent-hq/`, `tools/soak/gate_night.sh`), each with a header saying what it proves and how to run it; hard-coded sudo passwords and host paths removed. Bench tools only, nothing on the brain changes. Breaking: no.
