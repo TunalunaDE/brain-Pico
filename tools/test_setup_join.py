@@ -78,7 +78,8 @@ class Radio:
 
 for name in ("busio", "board", "digitalio", "socketpool", "ssl", "adafruit_requests"):
     stub(name)
-stub("microcontroller", nvm=bytearray(4096))
+stub("microcontroller", nvm=bytearray(4096),
+     cpu=types.SimpleNamespace(uid=bytes([0x82, 0x32, 0xA3, 0x24])))  # DEV-260: code.py names its hotspot by the id
 stub("supervisor", reload=lambda: None, runtime=_Any())
 stub("wifi", radio=Radio(), AuthMode=AuthMode)
 stub("adafruit_connection_manager")
@@ -110,6 +111,7 @@ def before_ap():
 
 print("wifi.scan")
 Radio.scan = [Net("Home", -70), Net("Home", -48), Net("noknok-setup", -20, True),
+              Net("noknok-setup-9f01", -30, True),   # DEV-260: another brain in setup mode
               Net("Cafe", -60, True), Net("", -30)]
 Radio.scan_fails = False
 Radio.ap_active = True
@@ -126,6 +128,8 @@ r = ns["_h_wifi_scan"]({}, {})
 names = [n["ssid"] for n in r["networks"]]
 check("available, strongest first, deduplicated", r["available"] and names == ["Home", "Cafe"], names)
 check("own hotspot and hidden (empty) names left out", "noknok-setup" not in names and "" not in names)
+check("DEV-260: other brains' hotspots (noknok-setup-xxxx) left out", not any(n.startswith("noknok-setup") for n in names), names)
+check("DEV-260: the hotspot name carries the short id", ns["AP_SSID"] == "noknok-setup-a324", ns.get("AP_SSID"))
 check("strongest reading kept for a repeated name", r["networks"][0]["rssi"] == -48)
 check("open flag", r["networks"][1]["open"] is True and r["networks"][0]["open"] is False)
 check("DEV-130: served from the cache: live false, age_s, no new scan",

@@ -18,7 +18,7 @@
 #      drive to the Pi; the files go over that mount - see below)
 #   4. clears the crash-strike counter, hard-resets and verifies (verify_brain.py,
 #      bench_fs_policy.py), then hard-resets once more so the brain is left running
-#      code.py (product or noknok-setup WiFi), never idle at the REPL (DEV-114)
+#      code.py (product or noknok-setup-xxxx WiFi), never idle at the REPL (DEV-114)
 #
 # Everything that decides what ends up on the brain is resolved BEFORE the erase, and the
 # script stops there if it cannot do it properly (nothing is wiped on a half-plan).
@@ -27,7 +27,7 @@
 #                 firmware cache), noknok_state.json, noknok_roles.json AND the backup's
 #                 settings.toml (the maker's pins, e.g. I2C on GP20/21) - see --settings.
 #                 Without --data the brain comes back factory-fresh with the repo's
-#                 settings.toml (PicoHub pins: I2C GP10/11 + GP20/21, USB GP0/1) and opens the noknok-setup WiFi.
+#                 settings.toml (PicoHub pins: I2C GP10/11 + GP20/21, USB GP0/1) and opens the noknok-setup-xxxx WiFi.
 #   --settings F  use this settings.toml instead (wins over the backup's and the repo's).
 #   --mpy DIR     directory with noknok.mpy, noknok_rpc.mpy, noknok_usb.mpy and
 #                 module_flasher.mpy built by tools/build_mpy.ps1 for the CircuitPython
@@ -199,8 +199,8 @@ echo "$OUT" | grep -q "VERIFY OK" || RC=1
 $PICO run "$SW/bench_fs_policy.py" 2>&1 | grep -E 'PASS|FAIL|SUMMARY|boot:' | tail -n 15
 # DEV-114: every pico.py run above stopped code.py, so the brain would now sit at the REPL
 # (lamp dark, no setup hotspot). End with a hard reset so it starts the product or the
-# noknok-setup WiFi on its own - also after a failed verify, so it is never left idle.
+# noknok-setup-xxxx WiFi on its own - also after a failed verify, so it is never left idle.
 $PICO run "$HERE/hard_reset.py" >/dev/null 2>&1
-echo "  final hard reset: the brain is starting code.py (product or noknok-setup WiFi);"
+echo "  final hard reset: the brain is starting code.py (product or noknok-setup-xxxx WiFi);"
 echo "  leave its console alone for ~30 s"
 [ "${RC:-0}" -eq 0 ] && echo "RESTORE OK" || { echo "RESTORE FAILED - see above"; exit 1; }

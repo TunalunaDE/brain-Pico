@@ -50,7 +50,7 @@ firmware + nvm) and `boards/raspberry_pi_pico2_w/mpconfigboard.mk` (`CIRCUITPY_F
 again and runs - no app needed (bench, 7 Nov 2026: product running ~45 s after the copy).
 Since code.py 0.43 (DEV-196) every boot with a good `wifi.json` also writes a missing Store copy,
 so brains set up before 15 Sep 2026 (or whose Store record was lost) heal themselves on their
-next normal boot; before that, the image put them into setup mode. A brain with nothing in the Store opens the `noknok-setup`
+next normal boot; before that, the image put them into setup mode. A brain with nothing in the Store opens the `noknok-setup-xxxx`
 hotspot. **`-wipe` = factory state** (fresh chips have an empty nvm anyway; use it for a unit
 going to another person, or when the Store itself is suspect).
 
@@ -74,13 +74,13 @@ Supply >= 5.0 V (DEV-107).
 
 | # | Do | Expect |
 |---|---|---|
-| 1 | Erased Pico: drag `flash_nuke.uf2`, then **only** `noknok-brain-...-wipe.uf2` | drive disappears, Pico reboots by itself; console: `noknok boot: CIRCUITPY drive hidden`, `power-on — reloading once`, then `No credentials — starting AP provisioning`; WiFi `noknok-setup` visible. Note the time from drag to hotspot. |
+| 1 | Erased Pico: drag `flash_nuke.uf2`, then **only** `noknok-brain-...-wipe.uf2` | drive disappears, Pico reboots by itself; console: `noknok boot: CIRCUITPY drive hidden`, `power-on — reloading once`, then `No credentials — starting AP provisioning`; WiFi `noknok-setup-xxxx` visible. Note the time from drag to hotspot. |
 | 2 | Set up from the app (any product) | provisioning completes, the product runs - as on a hand-restored brain |
 | 3 | `python3 tools/pico.py run tools/restore/verify_brain.py` | PASS (the DEV-84 acceptance check) |
 | 4 | File set = factory unit: list the CIRCUITPY files over the REPL (or `pico.py ls`) | exactly the manifest's `files` + CircuitPython's own `boot_out.txt` (and `/data` after setup); no `.py` next to the four `.mpy` |
 | 5 | Break it: remove `code.py` (or run `tools/restore/erase_fs.py`), replug | brain "empty" (drive visible, fail-open) |
 | 6 | BOOTSEL + drag the **default** (`...-cp10.3.1.uf2`, Store kept) | restored in one step; because the Store kept the WiFi copy: `wifi.json missing — restored from the Store copy`, joins, downloads the product, runs it, without the app |
-| 7 | Repeat 5 + drag the `-wipe` file | restored to factory state: `noknok-setup` hotspot again |
+| 7 | Repeat 5 + drag the `-wipe` file | restored to factory state: `noknok-setup-xxxx` hotspot again |
 | 8 | Drag the image onto a brain that runs an OLDER release | boots the new code; setup data in `/data` is gone (expected: whole filesystem replaced), Store kept |
 
 Known edge: RP2350-E10 - a Pico that once ran a firmware with a picotool **partition table**

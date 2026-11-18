@@ -36,7 +36,7 @@ It ends with `RESTORE OK` (and exit code 0) or `RESTORE FAILED`.
   host (`$MPY_CROSS` or on the `PATH`; its version must match the Pico's CircuitPython); the four `.mpy` inside the
   `--data` backup. If none exists the script stops *before the erase*. `--allow-source` installs `.py` anyway (small
   products only). `.mpy` and `.py` of the same library are never both installed (the `.py` would win).
-* **Without `--data`** the brain comes back factory-fresh and opens the `noknok-setup` WiFi; the app then provisions it
+* **Without `--data`** the brain comes back factory-fresh and opens the `noknok-setup-xxxx` WiFi; the app then provisions it
   again — that is the designed recovery.
 * **Crash strikes are cleared** (they live in nvm and survive a reformat; otherwise a brain that had parked itself after
   3 crashes stays parked).

@@ -4,6 +4,10 @@ Newest first. One entry per version bump, written in the same commit as the bump
 `## <version> - <date>` then `- DEV-xx - what changed and why. Breaking: yes/no.`
 Convention: Confluence "Development Conventions" (SD space, page 120160257).
 
+## code.py 0.45 - 2026-11-18
+
+- DEV-260 - the setup hotspot is named after the brain: `noknok-setup-xxxx`, xxxx = the same last 4 hex digits of the chip id as the network name (`noknok-a324` -> `noknok-setup-a324`), so two brains in setup mode at once never share a name and the phone, the customer and bench scripts join the right one. The brain's own WiFi scan (the list the app shows) leaves out every `noknok-setup...` network, also other brains'. The "Connecting..." setup page names the real hotspot. Brains before 0.45 keep the plain `noknok-setup`; the app (1.10.0) accepts both. Bench scripts that look for the hotspot must use the new name. Tests: `tools/test_setup_join.py` (+2). Breaking: yes for scripts that join exactly `noknok-setup` (use the prefix).
+
 ## tools - 2026-11-17
 
 - DEV-77 - bench-host scripts that existed only on the Pi4RFID bench host and the agents' box are now in git (`tools/bench/night/`, `power/`, `thermal/`, `diag/`, `tools/agent-hq/`, `tools/soak/gate_night.sh`), each with a header saying what it proves and how to run it; hard-coded sudo passwords and host paths removed. Bench tools only, nothing on the brain changes. Breaking: no.

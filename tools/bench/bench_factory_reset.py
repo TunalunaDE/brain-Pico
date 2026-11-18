@@ -3,7 +3,7 @@
 #
 # bench_factory_reset.py - bench-side factory reset of the brain's SETUP data: removes
 # /data/wifi.json, /data/product.py and the Store copy of the credentials, so the next
-# boot opens the noknok-setup hotspot. Keeps the firmware cache (/data/fw_*) and settings.toml.
+# boot opens the noknok-setup-xxxx hotspot. Keeps the firmware cache (/data/fw_*) and settings.toml.
 # Use when the brain is not reachable on the LAN (the /rpc factory_reset op is the normal way).
 import noknok as nk
 

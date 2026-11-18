@@ -446,7 +446,7 @@
 #          product.py present the product runs offline; without it the setup
 #          AP is offered, credentials kept
 #   2. No credentials -> AP provisioning:
-#        - Start hotspot "noknok-setup" (open network)
+#        - Start hotspot "noknok-setup-xxxx" (open network, xxxx = short id, DEV-260)
 #        - Serve the setup form, the form routes (/connect, /roles/*)
 #          and POST /rpc at 192.168.4.1 via adafruit_httpserver
 #        - Captive-portal probe paths serve the setup page so the OS shows "Sign in"
@@ -494,7 +494,7 @@ import adafruit_requests
 import adafruit_connection_manager
 from adafruit_httpserver import Server, Request, Response, POST
 
-CODE_VERSION = "0.44"
+CODE_VERSION = "0.45"
 
 LOG_FILE    = nk.DATA_DIR + "/log.txt"        # bench only (marker), see below
 EVENTS_KEY  = "events"     # audit history ([FW]/[CRASH]/[ROLE]/[RESET]...) lives in the
@@ -635,7 +635,12 @@ def log_new_boot():
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 
-AP_SSID     = "noknok-setup"
+# DEV-260: the hotspot carries this brain's short id, the same 4 hex digits as its
+# network name (noknok-a324 -> "noknok-setup-a324"), so with two brains in setup
+# mode at once the phone, the customer and the bench scripts join the right one.
+# Older brains still broadcast plain "noknok-setup"; the app accepts both.
+AP_SSID_PREFIX = "noknok-setup"
+AP_SSID     = AP_SSID_PREFIX + "-" + rpc.device_name()[len("noknok-"):]
 AP_PASSWORD = ""   # Open network
 
 # FALLBACK script, used only when the saved credentials carry no script_url
@@ -926,7 +931,7 @@ h1{color:#00aa44}</style></head><body>
 <h1>Connecting...</h1>
 <p>Your noknok device is now trying your network. If it works, it downloads its
 software and starts on its own.</p>
-<p>If the network "noknok-setup" appears again within a minute, the connection did
+<p>If the network "%s" appears again within a minute, the connection did
 not work (usually a wrong password): join it again and retry.</p>
 </body></html>"""
 
@@ -1487,7 +1492,8 @@ def _scan_networks():
                 log("[ap] WiFi scan took too long - using what was found so far")
                 break
             name = n.ssid
-            if not name or name == AP_SSID:
+            # DEV-260: no brain hotspot in the list (own or another brain's).
+            if not name or name.startswith(AP_SSID_PREFIX):
                 continue
             if name not in nets or n.rssi > nets[name]["rssi"]:
                 try:
@@ -1720,7 +1726,7 @@ def register_routes(server):
                    % ssid.replace("<", "&lt;"))
             return Response(request, HTML_SETUP.replace("<form", msg + "<form", 1),
                             content_type="text/html")
-        return Response(request, HTML_SUCCESS, content_type="text/html")
+        return Response(request, HTML_SUCCESS % AP_SSID, content_type="text/html")
 
     # ── Role assignment endpoints (v0.8) ─────────────────────────────────────
     # Called by the noknok app BEFORE /connect, while the phone is on the

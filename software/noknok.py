@@ -3,7 +3,7 @@
 # Raspberry Pi Pico — I2C master ("Conductor")
 #
 # v1.1 (Sam): added Conductor.check_factory_reset() — hold the knob button 5 s
-#             to wipe creds/state and reboot into the noknok-setup AP.
+#             to wipe creds/state and reboot into the noknok-setup-xxxx AP.
 # v1.2 (Sue): check_factory_reset(knob_status) now takes the KnobStatus the
 #             product already read, instead of reading the knob itself — a second
 #             read was eating the rotation delta and breaking knob control.
@@ -3071,7 +3071,7 @@ class Conductor:
 
     # ── Factory reset ─────────────────────────────────────────────────────────
     # Added v1.1 (Sam): hold the knob button for 5 s to wipe all credentials /
-    # state and reboot into the noknok-setup provisioning AP. Call once per
+    # state and reboot into the noknok-setup-xxxx provisioning AP. Call once per
     # product main-loop iteration: ks = knb.read(); c.check_factory_reset(ks)
 
     # Removed on reset: the credentials (wifi.json), the product script
@@ -3098,7 +3098,7 @@ class Conductor:
         (it auto-clears on read) and the product would never see the knob turn.
 
         Hold the knob button continuously for `hold_seconds` (default 5 s) to
-        wipe credentials/state and reboot into the noknok-setup AP. Releasing
+        wipe credentials/state and reboot into the noknok-setup-xxxx AP. Releasing
         the button at any point resets the timer.
 
         Escalating, best-effort feedback (a missing buzzer/LED never breaks it):

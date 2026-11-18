@@ -10,20 +10,20 @@ portal setup page). This is the app ↔ brain contract.
 
 ## Transport
 
-- **Base URL:** `http://192.168.4.1` (the Pico's `noknok-setup` AP), port **80**.
+- **Base URL:** `http://192.168.4.1` (the Pico's `noknok-setup-xxxx` AP), port **80**.
 - **Content type:** request bodies are `application/x-www-form-urlencoded`.
   Values are URL-decoded server-side (`+` → space, `%XX` → byte).
 - **JSON-in-a-field:** where a field carries structured data (e.g. `module_firmware`)
   it is a JSON **string** inside the form field, not a JSON request body.
 - **When:** the form endpoints below are called by the app **while the phone
-  is on the `noknok-setup` AP**, before `/connect` hands the Pico onto home WiFi.
+  is on the `noknok-setup-xxxx` AP**, before `/connect` hands the Pico onto home WiFi.
   Since code.py 0.17 the brain also serves **`POST /rpc`** (JSON, see below) on the
   AP *and* on home WiFi for the product's whole lifetime; the form endpoints are
   adapters over the same handlers. Since app 1.5.4 the WiFi step uses `/rpc`
   (`wifi.scan`, `provision`, then `hello` while connecting, DEV-100); role assignment
   still uses the form endpoint `/roles/assign`; after setup the app uses `hello` and
   `settings.*`.
-- **⚠ Client requirement — route over the hotspot.** `noknok-setup` has no internet, so
+- **⚠ Client requirement — route over the hotspot.** `noknok-setup-xxxx` has no internet, so
   Android (and iOS) keep mobile data as the default network while the phone is joined to
   it; a plain HTTP request to `192.168.4.1` then leaves over LTE and never arrives. A client
   must bind its traffic to the WiFi network for the whole setup (Android:
@@ -38,7 +38,7 @@ portal setup page). This is the app ↔ brain contract.
   `accepted:true` with a `join_id` - **not saved, not joined yet**. The brain then stops
   the hotspot and tries the home WiFi (3 attempts; a wrong password stops at the first)
   and saves the credentials only after a successful join. On failure nothing is saved,
-  the device plays its alert, and `noknok-setup` comes back with `hello` →
+  the device plays its alert, and `noknok-setup-xxxx` comes back with `hello` →
   `setup.last_join {join_id, ok:false, reason}`: `auth` (wrong password), `not_found`,
   `timeout`, `other`, or `not_saved` (drive open to a PC). RAM only: a power cut
   forgets it (the app sees the uptime go backwards and says "restarted"). The brain cannot
@@ -259,7 +259,7 @@ forced by a boot MemoryError, not by this bug. Whether the reload can go needs a
 test on CircuitPython 10.3.1 with the `.mpy` set; until then it stays.
 
 ### Known bug — no internet after the setup AP was up (DEV-47)
-Once `code.py` has started the `noknok-setup` AP in a power session, the station loses its
+Once `code.py` has started the `noknok-setup-xxxx` AP in a power session, the station loses its
 default route: every off-subnet connection fails at once (`EHOSTUNREACH`, DNS `-2`) while
 the LAN works. `stop_ap()` and soft reloads do not restore it; a hard reset does. Consequence
 today: after any failed download / save the brain falls back to the AP and every later retry

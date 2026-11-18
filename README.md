@@ -40,17 +40,19 @@ over I2C.
 
 ## Provisioning (PoC Step 1 — done)
 
-First boot: Pico starts a WiFi AP `noknok-setup` and serves a captive-portal setup page.
+First boot: Pico starts a WiFi AP `noknok-setup-xxxx` and serves a captive-portal setup page. `xxxx` is the brain's short id, the same 4 hex digits as its network name
+(`noknok-a324` -> `noknok-setup-a324`, code.py 0.45, DEV-260), so two brains in setup mode never share a
+hotspot name. Brains before 0.45 broadcast plain `noknok-setup`; the app accepts both.
 The user (or the noknok app) enters their home WiFi; the Pico saves it, hard-resets into WiFi
 mode, downloads the product script from GitHub over HTTPS, saves it as `product.py`, and runs
 it. Subsequent boots reconnect to WiFi and re-run the product directly.
 
 **Setup troubleshooting** (from the first full phone setup, 2 Oct 2026 — hardening in DEV-47):
 - *App: "Could not reach the device"* — Android keeps mobile data as the default network while
-  the phone is on the no-internet `noknok-setup` hotspot, so requests leave over LTE. App
+  the phone is on the no-internet `noknok-setup-xxxx` hotspot, so requests leave over LTE. App
   1.5.1+ routes itself over the hotspot (`bindProcessToNetwork`); older apps need mobile data off.
 - *Serial: `No network with that ssid`* — the WiFi name is exact (case, dashes). After three
-  failed joins the brain reopens `noknok-setup` for a retry — no replug needed.
+  failed joins the brain reopens `noknok-setup-xxxx` for a retry — no replug needed.
 - *Serial: `CANNOT save /data/product.py`* — the program cannot write because the drive is
   visible: read `boot_out.txt` (see *Fail open*).
 - **⚠ After the setup AP has been started, the station has no internet until a HARD reset.**
@@ -427,7 +429,7 @@ Core:
   ~5 s (modules found) every LED Button lights white and a buzzer clicks; hold **3 s more** and
   the LEDs flash 3× and go **dark** (dark = accepted, let go), the buzzer plays two rising
   notes, and the brain wipes credentials, product, roles and
-  settings and reboots into the `noknok-setup` AP. Release earlier → normal boot. It runs only
+  settings and reboots into the `noknok-setup-xxxx` AP. Release earlier → normal boot. It runs only
   on the power-on run, before the cold-boot reload, so no Conductor ever exists in the process
   that downloads (DEV-32). A product with nothing pressable resets from the app (`factory_reset`
   op). Product scripts no longer need to reserve a gesture for this.
@@ -559,7 +561,7 @@ compiled — `noknok.py` 184 KB → `noknok.mpy` 45 KB — so it loads with a fr
    Write `.py` files **without a BOM** — CircuitPython errors on a leading byte-order mark.
 2. **Power-cycle** the Pico (the radio is not reset by a soft reboot; a power cycle also returns
    the I2C modules to their `0x7F` staging address).
-3. Join `noknok-setup`, open the setup page (or use the noknok app), enter WiFi credentials.
+3. Join `noknok-setup-xxxx`, open the setup page (or use the noknok app), enter WiFi credentials.
 4. Watch the live serial console, or — to have `log.txt` written on the Pico — first create an
    empty file named `debug_log` in its root (that marker is the only thing that turns on flash
    logging; the field default is off). Read it over the REPL — the drive is hidden on a
