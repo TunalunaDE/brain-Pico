@@ -158,7 +158,8 @@
 #             chip interrupted mid-read holds SDA low through a Pico reset (PicoHub keeps
 #             the bus powered); busio.I2C then failed and the whole bus was skipped.
 #             _bus_clear() clocks SCL (max 9) until SDA is free, then sends a STOP. A bus
-#             that is switched off (SDA and SCL both low) is left alone.
+#             that is switched off (SDA and SCL both low) is left alone. Never raises;
+#             also run before the Store's temporary FRAM bus (every bus open, ADR-011).
 #
 # Quick start:
 #   from noknok import Conductor
@@ -692,8 +693,9 @@ class Store:
         sda, scl = env("NOKNOK_I2C_SDA"), env("NOKNOK_I2C_SCL")
         if not sda or not scl:
             raise OSError("no I2C bus A pins in settings.toml")
-        bus = busio.I2C(getattr(board, str(scl).strip()), getattr(board, str(sda).strip()),
-                        frequency=int(env("NOKNOK_I2C_FREQ", 100_000)))
+        scl_pin, sda_pin = getattr(board, str(scl).strip()), getattr(board, str(sda).strip())
+        _bus_clear(sda_pin, scl_pin)    # DEV-245: every bus open (a jammed bus = wrong record)
+        bus = busio.I2C(scl_pin, sda_pin, frequency=int(env("NOKNOK_I2C_FREQ", 100_000)))
         try:
             return fn(bus)
         finally:
@@ -1335,40 +1337,50 @@ def _bus_clear(sda_pin, scl_pin):
     -1 = still held low after 9 pulses, -2 = SCL low as well: the bus is switched
     off or has no pull-ups (a PicoHub bus rail that is off reads SDA = SCL = 0,
     RDM-13 bench 17 Nov 2026) - not clocked, busio then reports the bus.
-    Recovery only - digitalio never carries I2C traffic."""
+    Recovery only - digitalio never carries I2C traffic.
+    Never raises (DEV-245 review): any error (pin in use, e.g. a settings.toml typo
+    that gives two buses the same SCL pin; host Python) returns 0, and busio then
+    reports the bus as before."""
+    sda = scl = None
     try:
         import digitalio
+        try:
+            from microcontroller import delay_us as _wait    # exact 5 us half periods
+        except ImportError:
+            def _wait(us):
+                time.sleep(us / 1_000_000)
         sda = digitalio.DigitalInOut(sda_pin)
-    except Exception:
-        return 0                          # pin busy / host Python: nothing to do
-    try:
         sda.switch_to_input()
         if sda.value:
             return 0
         scl = digitalio.DigitalInOut(scl_pin)
-        try:
-            scl.switch_to_input(pull=digitalio.Pull.DOWN)   # pull-down: a floating
-            if not scl.value:                               # line reads low, not random
-                return -2
-            scl.switch_to_output(value=True, drive_mode=digitalio.DriveMode.OPEN_DRAIN)
-            n = -1
-            for i in range(1, 10):
-                scl.value = False
-                time.sleep(0.00001)
-                scl.value = True
-                time.sleep(0.00001)
-                if sda.value:
-                    n = i
-                    break
-            # STOP: SDA rises while SCL is high
-            sda.switch_to_output(value=False, drive_mode=digitalio.DriveMode.OPEN_DRAIN)
-            time.sleep(0.00001)
-            sda.value = True
-            return n
-        finally:
-            scl.deinit()
+        scl.switch_to_input(pull=digitalio.Pull.DOWN)   # pull-down: a floating
+        if not scl.value:                               # line reads low, not random
+            return -2
+        scl.switch_to_output(value=True, drive_mode=digitalio.DriveMode.OPEN_DRAIN)
+        n = -1
+        for i in range(1, 10):                  # 100 kHz minimums: tLOW 4.7 us, tHIGH 4.0 us
+            scl.value = False
+            _wait(5)
+            scl.value = True
+            _wait(5)
+            if sda.value:
+                n = i
+                break
+        # STOP: SDA rises while SCL is high
+        sda.switch_to_output(value=False, drive_mode=digitalio.DriveMode.OPEN_DRAIN)
+        _wait(5)
+        sda.value = True
+        return n
+    except Exception:
+        return 0
     finally:
-        sda.deinit()
+        for p in (scl, sda):
+            if p is not None:
+                try:
+                    p.deinit()
+                except Exception:
+                    pass
 
 
 class Conductor:

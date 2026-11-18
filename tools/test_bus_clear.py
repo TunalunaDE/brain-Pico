@@ -11,6 +11,8 @@
 #   off      - bus switched off (SDA and SCL read low): returns -2, SCL is never
 #              driven (bench 17 Nov 2026: a PicoHub bus rail that is off reads 0/0;
 #              the first patch clocked it and logged "still stuck").
+#   busy     - SDA or SCL pin already in use (settings.toml typo: two buses share a
+#              pin): returns 0, never raises (DEV-245 review), both pins released.
 #
 # Bench evidence: exploration repo rdm-13-third-party/bench/logs/2026-11-17-wp1/.
 # Run from the repo root:   python -I tools/test_bus_clear.py
@@ -59,6 +61,7 @@ class Bus:
 
 BUS = None
 PINS = {"GP10": "SDA", "GP11": "SCL"}
+BUSY = set()                                        # pins another object holds
 
 
 def make_digitalio():
@@ -72,6 +75,8 @@ def make_digitalio():
 
     class DigitalInOut:
         def __init__(self, pin):
+            if pin in BUSY:
+                raise ValueError("%s in use" % pin)
             self.line = PINS[pin]
         def switch_to_input(self, pull=None):
             BUS.drive[self.line] = None
@@ -115,5 +120,23 @@ check("stuck", Bus(hold=1), 1, True)
 check("stuck-3", Bus(hold=3), 3, True)
 check("hopeless", Bus(hold=None), -1, True)
 check("off", Bus(powered=False), -2, False)
+
+
+def check_busy(name, pin):
+    global BUS, fails
+    BUS = Bus(hold=1)
+    BUSY.clear(); BUSY.add(pin)
+    try:
+        got = noknok._bus_clear("GP10", "GP11")
+        ok = got == 0 and BUS.drive == {"SDA": None, "SCL": None}
+    except Exception as e:
+        got, ok = repr(e), False
+    BUSY.clear()
+    print("%-9s %s  (got %s, expected 0, no exception)" % (name, "OK  " if ok else "FAIL", got))
+    fails += not ok
+
+
+check_busy("busy-scl", "GP11")
+check_busy("busy-sda", "GP10")
 print("ALL PASS" if not fails else "%d FAILED" % fails)
 sys.exit(1 if fails else 0)
