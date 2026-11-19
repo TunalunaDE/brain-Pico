@@ -171,7 +171,7 @@ import json
 import os
 import struct
 
-__version__ = "1.26"
+__version__ = "1.27"
 
 try:
     import storage            # CircuitPython only; absent on a host Python
@@ -3612,7 +3612,8 @@ class NoknokPicoHub:
     Steering (each returns the board's result code, see RESULT_TEXT):
         hub.set_rail("bus_b" | "usb" | "mezz", True | False | "auto")
         hub.cycle_rail("bus_a" | "bus_b" | "usb" | "mezz", ms=250)
-        hub.set_min_input_voltage(15 | 20 | None)   # for a mezzanine that needs it
+        hub.set_min_input_voltage(12 | 15 | 20 | None)  # for a mezzanine that needs it (12: fw 0.4.0+)
+        hub.set_fixed_input_voltage(9 | 12 | 15 | 20 | None)  # hold exactly that level (fw 0.4.0+)
         hub.reset_pico(ms=100)                      # reboots THIS brain
         hub.clear_faults()
 
@@ -3634,6 +3635,7 @@ class NoknokPicoHub:
     _CMD_CYCLE_RAIL = 0x21
     _CMD_RESET_PICO = 0x22
     _CMD_MIN_VIN    = 0x23
+    _CMD_FIXED_VIN  = 0x24          # fw 0.4.0+ (DEV-143 / DEV-233)
     _KEY            = 0x5A          # required by CYCLE_RAIL / RESET_PICO
 
     RAILS = {"bus_a": 0, "bus_b": 1, "usb": 2, "mezz": 3}   # bus_a: cycle_rail only
@@ -3643,13 +3645,14 @@ class NoknokPicoHub:
     _RAIL_BITS = (("bus_a", 0x01), ("bus_b", 0x02), ("usb", 0x04),
                   ("mezz", 0x08), ("buck", 0x10))
     _INPUT_BITS = (("usb_device", 0x01), ("mezz_present", 0x02), ("mezz_fault", 0x04),
-                   ("min_set", 0x08), ("min_suspended", 0x10))
+                   ("min_set", 0x08), ("min_suspended", 0x10),
+                   ("fixed_set", 0x20))
     _FAULT_BITS = (("input_overcurrent", 0x01), ("heat_shed", 0x02), ("heat_critical", 0x04),
                    ("mezz_fault", 0x08), ("rail_5v_low", 0x10), ("pd_failed", 0x20),
                    ("temp_sensor", 0x40))
     _NOTICE_BITS = (("limited_power", 0x01), ("weak_charger", 0x02), ("hot", 0x04),
                     ("usb_held_by_mezz", 0x08), ("usb_held_for_power", 0x10),
-                    ("min_not_met", 0x20))
+                    ("min_not_met", 0x20), ("fixed_not_offered", 0x40))
     _RESET_CAUSE = ("power_on", "watchdog", "other", "software")
 
     def __init__(self, i2c, address=0x08):
@@ -3725,12 +3728,13 @@ class NoknokPicoHub:
           vin, iin, v5v            input V / A, 5 V rail V
           temp_c                   board temperature next to the buck
           rails    {bus_a, bus_b, usb, mezz, buck: on?}
-          inputs   {usb_device, mezz_present, mezz_fault, min_set, min_suspended}
+          inputs   {usb_device, mezz_present, mezz_fault, min_set, min_suspended,
+                   fixed_set (fw 0.4.0+: a fixed input level is held)}
           faults   [names] latched until clear_faults(): input_overcurrent, heat_shed,
                    heat_critical, mezz_fault, rail_5v_low, pd_failed, temp_sensor
           warnings [names] live notices: limited_power (5 V-only charger, not an
                    error), weak_charger, hot, usb_held_by_mezz, usb_held_for_power,
-                   min_not_met
+                   min_not_met, fixed_not_offered (fw 0.4.0+)
           reset_cause  why the power manager last restarted
         Raises PicoHubError (no answer / bad CRC twice)."""
         b = self._query(self._CMD_STATUS, 20, lambda buf: 19)
@@ -3796,14 +3800,28 @@ class NoknokPicoHub:
         return self._command([self._CMD_RESET_PICO, ms & 0xFF, (ms >> 8) & 0xFF, self._KEY])
 
     def set_min_input_voltage(self, volts=None):
-        """Ask for at least 15 or 20 V input (a mezzanine that needs it), or
-        None/0 for no minimum. The board otherwise picks the voltage by demand.
-        Survives a Pico reboot. NO_POWER = the charger cannot reach it (the
-        board takes the highest it can). Returns the result code."""
+        """Ask for at least 12, 15 or 20 V input (a mezzanine that needs it; 12 needs
+        power-manager firmware 0.4.0+), or None/0 for no minimum. The board otherwise
+        picks the voltage by demand. Survives a Pico reboot. NO_POWER = the charger does
+        not offer exactly that level (the board takes the highest level below it).
+        INVALID = a value the board does not know (older firmware: 12). Returns the result code."""
         v = int(volts or 0)
-        if v not in (0, 15, 20):
-            raise ValueError("set_min_input_voltage(15, 20 or None)")
+        if v not in (0, 12, 15, 20):
+            raise ValueError("set_min_input_voltage(12, 15, 20 or None)")
         return self._command([self._CMD_MIN_VIN, v])
+
+    def set_fixed_input_voltage(self, volts=None):
+        """Hold the charger contract at EXACTLY 9, 12, 15 or 20 V (None/0 = off, demand
+        control again). Demand and the minimum are ignored while it is set. Power-manager
+        firmware 0.4.0+; an older one answers UNKNOWN (0xFF) and nothing changes - this
+        call never raises for that. NO_POWER = the charger does not offer that level: the
+        board stays on its demand level (never a substitute voltage) and status()["warnings"]
+        has "fixed_not_offered". status()["inputs"]["fixed_set"] says a level is held.
+        Returns the result code."""
+        v = int(volts or 0)
+        if v not in (0, 9, 12, 15, 20):
+            raise ValueError("set_fixed_input_voltage(9, 12, 15, 20 or None)")
+        return self._command([self._CMD_FIXED_VIN, v])
 
     def clear_faults(self):
         """Clear the latched faults (and a 3-sheds suspension). Returns the result code."""

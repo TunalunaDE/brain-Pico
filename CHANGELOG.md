@@ -4,6 +4,10 @@ Newest first. One entry per version bump, written in the same commit as the bump
 `## <version> - <date>` then `- DEV-xx - what changed and why. Breaking: yes/no.`
 Convention: Confluence "Development Conventions" (SD space, page 120160257).
 
+## noknok.py 1.27 - 2026-11-19
+
+- DEV-233 - `NoknokPicoHub` supports power-manager firmware 0.4.0 (DEV-143): `set_min_input_voltage()` now accepts 12 (0 / 12 / 15 / 20), new `set_fixed_input_voltage(9 | 12 | 15 | 20 | None)` sends `0x24` and returns the result code (NO_POWER = the charger does not offer that level, the board stays on its demand level); `status()` decodes `inputs.fixed_set` (0x20) and `warnings: fixed_not_offered` (0x40). On a 0.3.x power manager the new call answers UNKNOWN (0xFF) without raising, so a product keeps running. Tests: `tools/test_picohub.py` (+12, the old "12 refused" check now expects 12 accepted and 13 refused). README PicoHub section updated. Not tested against real 0.4.0 hardware (rigs taken): see the ticket. Breaking: no.
+
 ## code.py 0.47 - 2026-11-19
 
 - DEV-187 - new /rpc op `mem` for bench watchers: `mem_free`, `mem_alloc`, `uptime`, `strikes`, about 100 bytes, no events / module list / I2C read. Why: the `status` reply (1.9-2.3 KB) stalled about 10 s in the lwIP send retry under concurrent hello + settings.get traffic and was then cut (DEV-175): 65 % of the watcher's memory reads failed in the DEV-181 run. `status` is unchanged and the app does not call it. Docs: `docs/device-protocol.md`, `docs/provisioning-http-api.md`. NOT bench-tested yet (rigs taken): Bob switches `night181.py`-style watchers to `mem` and counts reads over 2 h. Breaking: no.

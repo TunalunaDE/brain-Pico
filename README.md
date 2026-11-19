@@ -503,7 +503,8 @@ hub = c.picohub
 if hub:
     s = hub.status()   # contract_v/_a, vin, iin, v5v, temp_c, rails{}, inputs{}, faults[], warnings[], ...
     hub.source_caps()                  # [(5.0, 3.0), (9.0, 3.0), ...] what the charger offers
-    hub.set_min_input_voltage(20)      # a mezzanine needs 20 V (None = no minimum)
+    hub.set_min_input_voltage(20)      # a mezzanine needs 12, 15 or 20 V (None = no minimum; 12 needs fw 0.4.0+)
+    hub.set_fixed_input_voltage(15)    # hold EXACTLY 9, 12, 15 or 20 V (None = off; fw 0.4.0+, older: UNKNOWN 0xFF)
     hub.set_rail("usb", "auto")        # "bus_b" / "usb" / "mezz": True, False or "auto"
     hub.cycle_rail("bus_a", 300)       # power-cycle a bus; its modules enumerate again
     hub.reset_pico(100)                # reboots this brain; modules keep their addresses
@@ -512,7 +513,7 @@ if hub:
 
 - Steering calls return the board's result code: `hub.APPLIED` 0, `INTERLOCK` 1 (e.g. `"usb"` on
   with nothing plugged in), `NO_POWER` 2 (fault or charger too weak), `INVALID` 3;
-  `hub.RESULT_TEXT[code]` says it in words. Wishes and the minimum survive a Pico reboot.
+  `hub.RESULT_TEXT[code]` says it in words. Wishes and the minimum survive a Pico reboot. A fixed level the charger does not offer answers `NO_POWER` and `status()` shows `warnings: fixed_not_offered`; `inputs.fixed_set` says a level is held (DEV-233).
 - `status()` / `source_caps()` are CRC-checked, retried once, then raise `noknok.PicoHubError`
   (also when the board does not answer). Nothing is polled in the background: one I2C exchange per
   call. The `status` op of `/rpc` carries the same dict as `power`.

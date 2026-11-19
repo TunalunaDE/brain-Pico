@@ -77,10 +77,12 @@ class FakeHub(Device):
         self.bad_crc = 0          # corrupt the next N CRC replies
         self.results = {}         # command byte -> result code
         self.caps_count = None    # override the PDO count byte
+        self.inputs = 0x08        # status byte 15 (DEV-233: 0x20 = fixed level set)
+        self.notices = 0x01 | 0x04  # status byte 17 (DEV-233: 0x40 = fixed level not offered)
 
     def status_bytes(self):
         b = [1, 2] + u16(20000) + u16(3000) + u16(19950) + u16(1234) + u16(5010) \
-            + u16(-52) + [0x01 | 0x02 | 0x10, 0x08, 0x01 | 0x20, 0x01 | 0x04, 1]
+            + u16(-52) + [0x01 | 0x02 | 0x10, self.inputs, 0x01 | 0x20, self.notices, 1]
         return b + [crc8(b)]
 
     def caps_bytes(self):
@@ -109,7 +111,7 @@ class FakeHub(Device):
             self.reply = self._crc_maybe_bad(self.status_bytes())
         elif c == 0x11:
             self.reply = self._crc_maybe_bad(self.caps_bytes())
-        elif c in (0x12, 0x20, 0x21, 0x22, 0x23):
+        elif c in (0x12, 0x20, 0x21, 0x22, 0x23, 0x24):
             self.reply = bytes([self.results.get(c, 0)])
 
 
@@ -286,7 +288,33 @@ check("set_min_input_voltage(20) -> 23 14, NO_POWER returned",
       hub.writes[-1] == bytes([0x23, 20]) and r == p.NO_POWER)
 p.set_min_input_voltage(None)
 check("set_min_input_voltage(None) -> 23 00", hub.writes[-1] == bytes([0x23, 0]))
-check("set_min_input_voltage(12) refused", raises(lambda: p.set_min_input_voltage(12), ValueError))
+p.set_min_input_voltage(12)
+check("set_min_input_voltage(12) -> 23 0C (fw 0.4.0+, DEV-233)", hub.writes[-1] == bytes([0x23, 12]))
+check("set_min_input_voltage(13) refused", raises(lambda: p.set_min_input_voltage(13), ValueError))
+# DEV-233: SET_FIXED_INPUT_VOLTAGE 0x24 (fw 0.4.0)
+hub.results[0x24] = 0
+r = p.set_fixed_input_voltage(15)
+check("set_fixed_input_voltage(15) -> 24 0F, applied", hub.writes[-1] == bytes([0x24, 15]) and r == p.APPLIED)
+for v in (9, 12, 20):
+    p.set_fixed_input_voltage(v)
+    check("set_fixed_input_voltage(%d) -> 24 %02X" % (v, v), hub.writes[-1] == bytes([0x24, v]))
+p.set_fixed_input_voltage(None)
+check("set_fixed_input_voltage(None) -> 24 00", hub.writes[-1] == bytes([0x24, 0]))
+check("set_fixed_input_voltage(5) refused", raises(lambda: p.set_fixed_input_voltage(5), ValueError))
+hub.results[0x24] = 2
+r = p.set_fixed_input_voltage(12)
+check("set_fixed_input_voltage(12) on a charger without 12 V -> NO_POWER", r == p.NO_POWER)
+hub.results[0x24] = 0xFF
+r = p.set_fixed_input_voltage(15)
+check("0.3.x power manager: unknown command -> 0xFF returned, no exception", r == p.UNKNOWN)
+hub.inputs, hub.notices = 0x08 | 0x20, 0x01 | 0x40
+s2 = p.status()
+check("status: inputs.fixed_set", s2["inputs"]["fixed_set"] and s2["inputs"]["min_set"])
+check("status: warnings has fixed_not_offered", "fixed_not_offered" in s2["warnings"])
+hub.inputs, hub.notices = 0x08, 0x01 | 0x04
+s3 = p.status()
+check("status: no fixed flags when the bits are clear",
+      not s3["inputs"]["fixed_set"] and "fixed_not_offered" not in s3["warnings"])
 p.clear_faults()
 check("clear_faults() -> 12", hub.writes[-1] == bytes([0x12]))
 check("result text table", p.RESULT_TEXT[p.INTERLOCK] == "held off by an interlock")
