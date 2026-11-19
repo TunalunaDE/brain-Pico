@@ -1,5 +1,11 @@
 # code.py — noknok Pico W provisioning + launcher
-# Version: 0.44 (stage-1 per chip family, matched by layout — DEV-128)
+# Version: 0.46 (setup-mode WiFi scan: 4 passes — DEV-272)
+#
+# v0.46 (Sue): DEV-272 — the ONE boot scan that serves a whole setup session (DEV-130/136: never scan with
+#   the hotspot up or after a failed join) now takes SCAN_PASSES = 4 passes, 1 s apart, merged (strongest
+#   reading per name), instead of 2. Bench 19 Nov: one boot listed 2 of 5 networks and kept them for 30+ min
+#   (a power cycle fixed it). More passes lower the odds of a missed beacon; they cost about +6 s before the
+#   hotspot starts. The typed-name refusal already lets a second request through (DEV-150).
 #
 # v0.44 (Sue): DEV-128 — the stage-1 pass rolls out one bootloader PER CHIP FAMILY. Registry 2.0.0
 #   lists `bootloader.stage1.<CHIP>` (CH32V003, CH32X035); _resolve_stage1() returns {layout: index},
@@ -494,7 +500,7 @@ import adafruit_requests
 import adafruit_connection_manager
 from adafruit_httpserver import Server, Request, Response, POST
 
-CODE_VERSION = "0.45"
+CODE_VERSION = "0.46"
 
 LOG_FILE    = nk.DATA_DIR + "/log.txt"        # bench only (marker), see below
 EVENTS_KEY  = "events"     # audit history ([FW]/[CRASH]/[ROLE]/[RESET]...) lives in the
@@ -1473,7 +1479,9 @@ _scan_cache = None          # list from _scan_networks(), or None (no scan / fai
 _scan_at    = None          # time.monotonic() of that scan
 
 SCAN_BUDGET_S = 10          # stop collecting after this long (results that trickle)
-SCAN_PASSES   = 2           # DEV-150: one pass missed a strong home network (1 of 2 boots)
+SCAN_PASSES   = 4           # DEV-150: one pass missed a strong home network (1 of 2 boots); DEV-272: 2 passes still left
+                            # one boot with 2 of 5 networks, and that one list serves the whole setup session
+SCAN_GAP_S    = 1           # DEV-272: pause between passes (a pass right after the last one hears the same beacons)
 _refused_once = set()       # DEV-150: names refused as not visible, this boot (RAM only)
 
 def _scan_networks():
@@ -1520,7 +1528,9 @@ def _refresh_scan_cache():
     the setup session gets (no scan with the AP up, DEV-130)."""
     global _scan_cache, _scan_at
     merged = None
-    for _ in range(SCAN_PASSES):
+    for i in range(SCAN_PASSES):
+        if i:
+            time.sleep(SCAN_GAP_S)
         nets = _scan_networks()
         if nets is None:
             continue
