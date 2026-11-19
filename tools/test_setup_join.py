@@ -263,7 +263,7 @@ seq[:] = [None, [Net("Home", -45)]]
 ns["_refresh_scan_cache"]()
 check("one pass failing, the other OK -> its list is used",
       [n["ssid"] for n in (ns["_scan_cache"] or [])] == ["Home"], ns["_scan_cache"])
-seq[:] = [None, None]
+seq[:] = [None] * P          # DEV-272: P passes (4), all failing
 ns["_refresh_scan_cache"]()
 check("both passes failing -> no list (pre-check skipped, as before)", ns["_scan_cache"] is None)
 seq[:] = [[Net("Cafe", -60)], [Net("Cafe", -61)]]   # both passes miss "Home"
