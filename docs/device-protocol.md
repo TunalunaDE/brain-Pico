@@ -24,7 +24,7 @@ This page is written from the code (`software/noknok_rpc.py` 0.6.2, `software/co
 | Part | State |
 |------|-------|
 | `POST /rpc` carrier (setup hotspot and home WiFi), dispatcher | Shipped |
-| `hello`, `status`, `settings.get/set/reset`, `roles.assign`, `provision`, `wifi.scan`, `reboot`, `factory_reset` | Shipped |
+| `hello`, `status`, `mem`, `settings.get/set/reset`, `roles.assign`, `provision`, `wifi.scan`, `reboot`, `factory_reset` | Shipped |
 | `config_schema` v2 and `c.settings` (product and device scope) | Shipped |
 | Authorisation of `/rpc` | **Not built.** `Dispatcher.authorize` exists as a hook and nothing sets it (see section 5) |
 | `status`: per-module installed-vs-published firmware state | **Not built** (the op returns modules, events, strikes and link state only) |
@@ -79,6 +79,7 @@ Names and one-line purpose. Arguments and reply fields: [provisioning-http-api.m
 |----|---------|
 | `hello` | Device id, name, state (`unprovisioned` / `provisioned` / `parked`), product, component versions, pin configuration, last setup-join result, op list. Open and cheap: call it first |
 | `status` | State, crash strikes, Store backend, free memory, IP, modules, power-manager status (PicoHub only), recent events, link counters |
+| `mem` | Tiny reply (about 100 bytes: `mem_free`, `mem_alloc`, `uptime`, `strikes`) for bench watchers; use it instead of `status` under load (code.py 0.47, DEV-187) |
 | `settings.get` / `settings.set` / `settings.reset` | Read, merge, reset to defaults; `scope` is `product` (default) or `device` |
 | `roles.assign` | Wait up to 20 s for the customer to touch a module, save it under a role id |
 | `wifi.scan` | List visible networks (on the hotspot: the list scanned before the hotspot started) |

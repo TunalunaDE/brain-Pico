@@ -4,6 +4,10 @@ Newest first. One entry per version bump, written in the same commit as the bump
 `## <version> - <date>` then `- DEV-xx - what changed and why. Breaking: yes/no.`
 Convention: Confluence "Development Conventions" (SD space, page 120160257).
 
+## code.py 0.47 - 2026-11-19
+
+- DEV-187 - new /rpc op `mem` for bench watchers: `mem_free`, `mem_alloc`, `uptime`, `strikes`, about 100 bytes, no events / module list / I2C read. Why: the `status` reply (1.9-2.3 KB) stalled about 10 s in the lwIP send retry under concurrent hello + settings.get traffic and was then cut (DEV-175): 65 % of the watcher's memory reads failed in the DEV-181 run. `status` is unchanged and the app does not call it. Docs: `docs/device-protocol.md`, `docs/provisioning-http-api.md`. NOT bench-tested yet (rigs taken): Bob switches `night181.py`-style watchers to `mem` and counts reads over 2 h. Breaking: no.
+
 ## code.py 0.46 - 2026-11-19
 
 - DEV-272 - the list of WiFi networks in setup mode is ONE scan taken at boot (a scan with the hotspot up or after a failed join hung the radio, DEV-130/136), so one bad scan stayed for the whole session: on the bench a boot listed 2 of 5 networks for 30+ min and "Search again" could not fix it (a power cycle did). The boot scan is now 4 passes, 1 s apart, merged (was 2): fewer missed beacons, about 6 s more before the hotspot starts. Unchanged: the first request for a name that is not in the list is refused with `network_not_found` and the same name asked again (the app's "send anyway") is tried for real (DEV-150), so a missed home network no longer blocks a customer. NOT bench-tested yet (both rigs were taken): Bob to run the failed-join series and count how often a boot lists fewer networks than the phone sees. Not done: a controlled rescan op or reboot-on-failure (DEV-272 options 3 and 4: need a bench series first). Breaking: no.

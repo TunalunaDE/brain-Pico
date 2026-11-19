@@ -1,5 +1,12 @@
 # code.py — noknok Pico W provisioning + launcher
-# Version: 0.46 (setup-mode WiFi scan: 4 passes — DEV-272)
+# Version: 0.47 (tiny `mem` op for watchers — DEV-187)
+#
+# v0.47 (Sue): DEV-187 — new /rpc op `mem`: {"ok", "mem_free", "mem_alloc", "uptime", "strikes"}, a reply of
+#   about 100 bytes. `status` is 1.9-2.3 KB and, under concurrent hello/settings.get traffic, its send stalled
+#   ~10 s in lwIP (DEV-175) and the client got a cut reply (65 % of the bench watcher's reads, DEV-181).
+#   Bench watchers (memory / soak) read `mem` instead; `status` is unchanged.
+#
+# v0.46 (setup-mode WiFi scan: 4 passes — DEV-272)
 #
 # v0.46 (Sue): DEV-272 — the ONE boot scan that serves a whole setup session (DEV-130/136: never scan with
 #   the hotspot up or after a failed join) now takes SCAN_PASSES = 4 passes, 1 s apart, merged (strongest
@@ -500,7 +507,7 @@ import adafruit_requests
 import adafruit_connection_manager
 from adafruit_httpserver import Server, Request, Response, POST
 
-CODE_VERSION = "0.46"
+CODE_VERSION = "0.47"
 
 LOG_FILE    = nk.DATA_DIR + "/log.txt"        # bench only (marker), see below
 EVENTS_KEY  = "events"     # audit history ([FW]/[CRASH]/[ROLE]/[RESET]...) lives in the
@@ -1310,6 +1317,13 @@ def _h_hello(args, msg):
 
 STATUS_EVENTS = 10      # events per `status` reply (keeps it under rpc.MAX_REPLY)
 
+def _h_mem(args, msg):
+    """DEV-187: a reply far below one TCP segment (~100 bytes) for bench watchers: heap in use /
+    free, uptime, crash strikes. No events, no module list, no I2C read: nothing here can block."""
+    import gc
+    return {"mem_free": gc.mem_free(), "mem_alloc": gc.mem_alloc(),
+            "uptime": int(time.monotonic()), "strikes": _crash_count()}
+
 def _h_status(args, msg):
     """Phase-1 subset of `status` (DEV-36 adds per-module firmware state):
     event history, crash strikes, storage mode, memory. At most STATUS_EVENTS
@@ -1665,6 +1679,7 @@ def register_ops():
     d = rpc.dispatcher()
     d.register("hello", _h_hello)
     d.register("status", _h_status)
+    d.register("mem", _h_mem)                      # DEV-187
     d.register("reboot", _h_reboot)
     d.register("factory_reset", _h_factory_reset)
     d.register("settings.get", _h_settings_get)
