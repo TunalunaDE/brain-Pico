@@ -44,6 +44,7 @@ Bench-host scripts taken into git by DEV-77 (17 Nov 2026; they existed only on P
 | `thermal/picohub_thermal_log.py` | Pico | MOD-0011 thermal run: holds the input contract, logs rails/currents/temperature. |
 | `thermal/picohub_clear_faults.py` | Pico | Clears the PicoHub's latched faults (CLEAR_FAULTS 0x12). |
 | `diag/ver_check.py` | Pico | Read-only versions on the rig: CircuitPython, code.py, noknok, PicoHub power manager (rule "newest code first"). |
+| `diag/list_modules.py` | Pico | Read-only inventory: every enumerated module with type, bus, UID, I2C address and firmware (DEV-197: match a clamped module's minichlink UNIID to the brain's view, check its version after a flash). |
 | `diag/i2c_scan_pins.py`, `diag/scan_7f.py`, `diag/probe_bus.py` | Pico | I2C scan on every common pin pair; 0x7F/0x7E probe on bus A; Conductor addresses per type. |
 | `diag/nvm_dump.py`, `diag/fs_walk.py`, `diag/env_check.py` | Pico | Read-only: nvm crash counter + OTA stamp; filesystem tree; parsed `settings.toml`. |
 | `diag/find_brain.py NAME_PART` | host | Finds the brain on the /24 by `/rpc hello` (DHCP addresses move). |
