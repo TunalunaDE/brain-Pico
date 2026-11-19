@@ -1,5 +1,12 @@
 # code.py — noknok Pico W provisioning + launcher
-# Version: 0.47 (tiny `mem` op for watchers — DEV-187)
+# Version: 0.48 (working fallback product URL — DEV-265)
+#
+# v0.48 (Sue): DEV-265 — the fallback SCRIPT_URL (used only when the saved credentials carry no script_url) pointed
+#   at poc/trio_demo.py in buildwithnoknok.github.io, removed on 24 Jun 2026: HTTP 404 on every boot, then the setup
+#   hotspot again ("setup did not work"). It now points at the public poc product Button Light (scripts/button_light.py,
+#   runs on any single LED Button). tools/test_fallback_url.py fetches it and fails when it is not HTTP 200.
+#
+# v0.47 (tiny `mem` op for watchers — DEV-187)
 #
 # v0.47 (Sue): DEV-187 — new /rpc op `mem`: {"ok", "mem_free", "mem_alloc", "uptime", "strikes"}, a reply of
 #   about 100 bytes. `status` is 1.9-2.3 KB and, under concurrent hello/settings.get traffic, its send stalled
@@ -507,7 +514,7 @@ import adafruit_requests
 import adafruit_connection_manager
 from adafruit_httpserver import Server, Request, Response, POST
 
-CODE_VERSION = "0.47"
+CODE_VERSION = "0.48"
 
 LOG_FILE    = nk.DATA_DIR + "/log.txt"        # bench only (marker), see below
 EVENTS_KEY  = "events"     # audit history ([FW]/[CRASH]/[ROLE]/[RESET]...) lives in the
@@ -658,10 +665,10 @@ AP_PASSWORD = ""   # Open network
 
 # FALLBACK script, used only when the saved credentials carry no script_url
 # (the app always sends the chosen product's script_url from its manifest in
-# the public poc repo). Points at the trio demo in the public
-# buildwithnoknok.github.io repo. There is no backend: the product comes from
-# the app's catalog, not from a purchase record.
-SCRIPT_URL = "https://raw.githubusercontent.com/buildwithnoknok/buildwithnoknok.github.io/main/poc/trio_demo.py"
+# the public poc repo). DEV-265: the public poc product "Button Light" (runs on
+# any single LED Button). Keep it pointing at a file that exists: the check
+# tools/test_fallback_url.py fails when it does not return HTTP 200.
+SCRIPT_URL = "https://raw.githubusercontent.com/buildwithnoknok/poc/main/scripts/button_light.py"
 
 # Field-written files live in /data (DEV-18): their directory entries share a
 # block with each other, not with code.py / noknok.py / lib. Brains provisioned
