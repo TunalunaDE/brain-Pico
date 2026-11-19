@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT
 #
 # bench_dev78_phases.py - DEV-78 step 2 (visual): WHERE do the LEDs 16x glitches come from?
+# Works with the LEDs 8x too (DEV-269): the first LEDs module found on the USB host is used.
 # bench_dev78_parser.py proved the module receives and executes every command correctly
 # while the glitches are visible, so this splits the LED-output side. A person watches the
 # ring; the Display shows the phase letter. 60 s per phase, 5 s dark gap between phases:
@@ -24,7 +25,11 @@ PHASE_S = 60
 WARM = (160, 80, 0, 95)
 SWEEP = list(range(43, 7, -1)) + list(range(8, 44))
 
-m = [x for x in noknok_usb.discover() if getattr(x[2], "MODULE_TYPE", 0) == 0x06][0][2]
+# LEDs 16x (type 0x06, colour = 0x11 RGBW) or LEDs 8x (type 0x04, colour = 0x01 RGB, DEV-269)
+mods = [x for x in noknok_usb.discover() if getattr(x[2], "MODULE_TYPE", 0) in (0x06, 0x04)]
+m = mods[0][2]
+COLOUR = bytes((0x11,) + WARM) if m.MODULE_TYPE == 0x06 else bytes((0x01,) + WARM[:3])
+print("module", mods[0][0], "type 0x%02x fw" % m.MODULE_TYPE, m.version())
 c = Conductor()
 c.enumerate()
 d = c.display[0]
@@ -44,7 +49,7 @@ def phase(letter, levels, load):
     d.clear(BLACK)
     d.text(letter, size=64, color=WHITE, x=0, y=8)
     put((0x03, 43))
-    put((0x11,) + WARM)
+    put(COLOUR)
     print("[phase %s] %s" % (letter, time.monotonic()))
     global lit_until
     t0, n, i = time.monotonic(), 0, 0
