@@ -243,6 +243,14 @@ noknok_rpc 0.3 runs kicks only, `LINK_FULL_EVERY = 0`; N = every Nth attempt a f
 code.py's post-join work runs (NTP with a 2 s budget, mDNS if enabled).
 `status.link` reports `drops` / `rejoins` / `backoff`; an offline boot is not a drop.
 
+**Connections (noknok_rpc 0.7.0, DEV-198):** `/rpc` honours HTTP keep-alive (rules and bounds:
+[device-protocol.md § 3](device-protocol.md#3-carrier)). Reuse ONE connection: each new
+connection costs the brain's network stack, and about one per second (a person fiddling with
+the settings page, a new connection per `settings.set`) cost 44-72 % ping loss before 0.7.0.
+`status.link` counts `requests` (answered since boot), `reused` (of those, on a kept
+connection) and `ka_evicted` (idle kept connections closed for a new client), so a test can
+see whether a client reuses its connection.
+
 `product_id` (the manifest id) is new and optional on `/connect` and `provision`; it is
 stored with the credentials so the app can fetch the right `config_schema` later.
 
