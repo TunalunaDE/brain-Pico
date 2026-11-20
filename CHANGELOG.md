@@ -4,6 +4,10 @@ Newest first. One entry per version bump, written in the same commit as the bump
 `## <version> - <date>` then `- DEV-xx - what changed and why. Breaking: yes/no.`
 Convention: Confluence "Development Conventions" (SD space, page 120160257).
 
+## noknok.py 1.29 - 2026-11-20
+
+- DEV-21 - review fix (Sam): the rescue gate for `0xB4` at 0x7E is per flash layout from the stage-1's own `0xB1` reply: V003 (layout 2) from stage-1 1.3.0, X035 (layout 3, PicoHub) from 1.1.0 (`_BL_GET_ID_SINCE`). 1.28 compared the version across chip families (> 1.2.0), which shut out the X035 1.1.0 that answers `0xB4` with its fixed type 0x07. Unknown layouts never get the new command. Tests: `tools/test_foreign_device.py` rescue cases now 5 (V003 1.3.0 / 1.2.0, X035 1.1.0 / 1.0.0, unknown layout). Breaking: no.
+
 ## noknok.py 1.28 - 2026-11-20
 
 - DEV-21 (ADR-005) - the brain asks modules who they are. New `Conductor.identify(address, bus)`: writes `0xB4` GET_ID, reads the 10-byte `[UID x8][TYPE][CRC8]` reply (same as at 0x7F) and accepts it only with a valid CRC-8, a known type and a real UID (old apps answer zeros, whose CRC-8 is also 0). Restore asks it first at every saved address: the saved UID answers = restored; another noknok module answers = stale entry, not restored, sent through the bootloader round trip so it re-enumerates as itself (`[MODULE]` event; before, a same-type, same-firmware module was restored under the wrong UID); a module saved with 0xB4-capable firmware (`GET_ID_SINCE`: Buzzer 3.6.0, Knob 2.4.0, LED Button 2.5.0, Display 0.8.0, PicoHub 0.4.0) that does not answer = foreign, not restored (a foreign chip can echo 0x01 to 0xB1, it cannot produce a UID + CRC). Modules on older firmware keep the DEV-119/DEV-204 0xB1 check, so old and new modules mix. Rescue: a parked module whose UID the state does not know is asked `0xB4` at 0x7E, only when its stage-1 is newer than 1.2.0 (DEV-22 keeps the type); stage-1 1.2.0 never gets the new command. No bus scanning. Tests: `tools/test_foreign_device.py` (+14 DEV-21 checks; the phantom check now allows the 2 GET_ID probes). Breaking: no.
