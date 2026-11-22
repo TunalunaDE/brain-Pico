@@ -1,5 +1,30 @@
 # code.py — noknok Pico W provisioning + launcher
-# Version: 0.44 (stage-1 per chip family, matched by layout — DEV-128)
+# Version: 0.49 (brain capabilities in hello + provision check — DEV-268)
+#
+# v0.49 (Sue): DEV-268 — `hello` returns `capabilities` (i2c, i2c_b, usb_host from the pins in
+#   settings.toml and the build) and `provision` takes an optional `requires` list (the
+#   product manifest's needs): a brain that lacks one answers accepted:false, reason
+#   brain_lacks, missing[] and changes nothing. Replaces the manifest field brain_type.
+#
+# v0.48 (Sue): DEV-265 — the fallback SCRIPT_URL (used only when the saved credentials carry no script_url) pointed
+#   at poc/trio_demo.py in buildwithnoknok.github.io, removed on 24 Jun 2026: HTTP 404 on every boot, then the setup
+#   hotspot again ("setup did not work"). It now points at the public poc product Button Light (scripts/button_light.py,
+#   runs on any single LED Button). tools/test_fallback_url.py fetches it and fails when it is not HTTP 200.
+#
+# v0.47 (tiny `mem` op for watchers — DEV-187)
+#
+# v0.47 (Sue): DEV-187 — new /rpc op `mem`: {"ok", "mem_free", "mem_alloc", "uptime", "strikes"}, a reply of
+#   about 100 bytes. `status` is 1.9-2.3 KB and, under concurrent hello/settings.get traffic, its send stalled
+#   ~10 s in lwIP (DEV-175) and the client got a cut reply (65 % of the bench watcher's reads, DEV-181).
+#   Bench watchers (memory / soak) read `mem` instead; `status` is unchanged.
+#
+# v0.46 (setup-mode WiFi scan: 4 passes — DEV-272)
+#
+# v0.46 (Sue): DEV-272 — the ONE boot scan that serves a whole setup session (DEV-130/136: never scan with
+#   the hotspot up or after a failed join) now takes SCAN_PASSES = 4 passes, 1 s apart, merged (strongest
+#   reading per name), instead of 2. Bench 19 Nov: one boot listed 2 of 5 networks and kept them for 30+ min
+#   (a power cycle fixed it). More passes lower the odds of a missed beacon; they cost about +6 s before the
+#   hotspot starts. The typed-name refusal already lets a second request through (DEV-150).
 #
 # v0.44 (Sue): DEV-128 — the stage-1 pass rolls out one bootloader PER CHIP FAMILY. Registry 2.0.0
 #   lists `bootloader.stage1.<CHIP>` (CH32V003, CH32X035); _resolve_stage1() returns {layout: index},
@@ -494,7 +519,7 @@ import adafruit_requests
 import adafruit_connection_manager
 from adafruit_httpserver import Server, Request, Response, POST
 
-CODE_VERSION = "0.45"
+CODE_VERSION = "0.49"
 
 LOG_FILE    = nk.DATA_DIR + "/log.txt"        # bench only (marker), see below
 EVENTS_KEY  = "events"     # audit history ([FW]/[CRASH]/[ROLE]/[RESET]...) lives in the
@@ -645,10 +670,10 @@ AP_PASSWORD = ""   # Open network
 
 # FALLBACK script, used only when the saved credentials carry no script_url
 # (the app always sends the chosen product's script_url from its manifest in
-# the public poc repo). Points at the trio demo in the public
-# buildwithnoknok.github.io repo. There is no backend: the product comes from
-# the app's catalog, not from a purchase record.
-SCRIPT_URL = "https://raw.githubusercontent.com/buildwithnoknok/buildwithnoknok.github.io/main/poc/trio_demo.py"
+# the public poc repo). DEV-265: the public poc product "Button Light" (runs on
+# any single LED Button). Keep it pointing at a file that exists: the check
+# tools/test_fallback_url.py fails when it does not return HTTP 200.
+SCRIPT_URL = "https://raw.githubusercontent.com/buildwithnoknok/poc/main/scripts/button_light.py"
 
 # Field-written files live in /data (DEV-18): their directory entries share a
 # block with each other, not with code.py / noknok.py / lib. Brains provisioned
@@ -751,6 +776,35 @@ def _config_status():
                      for g in ("i2c_a", "i2c_b", "usb")},
             "source": cfg.get("source"),
             "problems": list(cfg.get("problems") or []) + list(_bus_problems)}
+
+def _capabilities():
+    """DEV-268: what this brain can drive, so the app (and provision below) only installs
+    products that fit, instead of a board name in the manifest. "i2c" always (missing bus A
+    pins show up in config.problems); "i2c_b" when bus B pins are set; "usb_host" when the
+    USB host pins are set AND this CircuitPython build has the usb_host module (the Pico 2 W
+    has it; an ESP32-S3 build does not today, RDM-12). "ble" will come with a BLE carrier."""
+    caps = ["i2c"]
+    try:
+        cfg = nk.pin_config()
+    except Exception:
+        return caps
+    if cfg.get("i2c_b"):
+        caps.append("i2c_b")
+    if cfg.get("usb"):
+        try:
+            import usb_host      # noqa: F401 - only asks whether the build has it
+            caps.append("usb_host")
+        except ImportError:
+            pass
+    return caps
+
+def _missing_caps(requires):
+    """DEV-268: the capabilities in `requires` (from the app, the product's manifest) that
+    this brain lacks. Anything not a list (an older app sends nothing) = no check."""
+    if not isinstance(requires, list):
+        return []
+    have = _capabilities()
+    return [str(c) for c in requires if str(c) not in have]
 
 # The role endpoints need a Conductor to talk to the I2C modules. Enumeration
 # takes a few seconds, so we create + enumerate it once on first use and reuse it.
@@ -1294,6 +1348,7 @@ def _h_hello(args, msg):
         "online": bool(wifi.radio.connected),
         "ap": bool(wifi.radio.ap_active),
         "config": _config_status(),     # DEV-74: pins in use + problems (app: "setup incomplete")
+        "capabilities": _capabilities(),  # DEV-268: i2c, i2c_b, usb_host (manifest `requires`)
         # DEV-100: why the last setup join failed (RAM). DEV-141: received = the
         # join_id of the last accepted provision (app: "did it get my request?").
         "setup": {"last_join": _last_join, "received": _received_join},
@@ -1303,6 +1358,13 @@ def _h_hello(args, msg):
     }
 
 STATUS_EVENTS = 10      # events per `status` reply (keeps it under rpc.MAX_REPLY)
+
+def _h_mem(args, msg):
+    """DEV-187: a reply far below one TCP segment (~100 bytes) for bench watchers: heap in use /
+    free, uptime, crash strikes. No events, no module list, no I2C read: nothing here can block."""
+    import gc
+    return {"mem_free": gc.mem_free(), "mem_alloc": gc.mem_alloc(),
+            "uptime": int(time.monotonic()), "strikes": _crash_count()}
 
 def _h_status(args, msg):
     """Phase-1 subset of `status` (DEV-36 adds per-module firmware state):
@@ -1473,7 +1535,9 @@ _scan_cache = None          # list from _scan_networks(), or None (no scan / fai
 _scan_at    = None          # time.monotonic() of that scan
 
 SCAN_BUDGET_S = 10          # stop collecting after this long (results that trickle)
-SCAN_PASSES   = 2           # DEV-150: one pass missed a strong home network (1 of 2 boots)
+SCAN_PASSES   = 4           # DEV-150: one pass missed a strong home network (1 of 2 boots); DEV-272: 2 passes still left
+                            # one boot with 2 of 5 networks, and that one list serves the whole setup session
+SCAN_GAP_S    = 1           # DEV-272: pause between passes (a pass right after the last one hears the same beacons)
 _refused_once = set()       # DEV-150: names refused as not visible, this boot (RAM only)
 
 def _scan_networks():
@@ -1520,7 +1584,9 @@ def _refresh_scan_cache():
     the setup session gets (no scan with the AP up, DEV-130)."""
     global _scan_cache, _scan_at
     merged = None
-    for _ in range(SCAN_PASSES):
+    for i in range(SCAN_PASSES):
+        if i:
+            time.sleep(SCAN_GAP_S)
         nets = _scan_networks()
         if nets is None:
             continue
@@ -1566,14 +1632,22 @@ def _h_wifi_scan(args, msg):
     return r
 
 def _do_provision(ssid, password, script_url, module_firmware, product_id,
-                  config_defaults=None, force=False, join_id=None):
+                  config_defaults=None, force=False, join_id=None, requires=None):
     """Two situations, one op:
     - On the setup AP: hand the credentials to run_ap_provisioning()'s loop,
       which stops the AP, verifies the join, saves and hard-resets (as today).
     - On home WiFi (product running): a product switch. ssid/password may be
       omitted to keep the current network. Save, drop product.py, hard-reset;
-      the boot path downloads the new script before any Conductor exists."""
+      the boot path downloads the new script before any Conductor exists.
+    DEV-268: `requires` (the manifest's brain capabilities, sent by the app) is
+    checked first in both cases; a brain that lacks one refuses with reason
+    brain_lacks + missing[] and changes nothing (no join, no switch)."""
     global _join_seq, _received_join
+    missing = _missing_caps(requires)
+    if missing:
+        log(f"[cfg] product {product_id or '?'} needs {missing}: this brain lacks it - refused")
+        return {"accepted": False, "reason": "brain_lacks", "missing": missing,
+                "capabilities": _capabilities()}
     if wifi.radio.ap_active:
         if not ssid:
             return {"ok": False, "error": "ssid required"}
@@ -1655,6 +1729,7 @@ def register_ops():
     d = rpc.dispatcher()
     d.register("hello", _h_hello)
     d.register("status", _h_status)
+    d.register("mem", _h_mem)                      # DEV-187
     d.register("reboot", _h_reboot)
     d.register("factory_reset", _h_factory_reset)
     d.register("settings.get", _h_settings_get)
@@ -1665,7 +1740,7 @@ def register_ops():
     d.register("provision", lambda a, m: _do_provision(
         a.get("ssid"), a.get("password"), a.get("script_url"),
         a.get("module_firmware"), a.get("product_id"), a.get("config_defaults"),
-        bool(a.get("force")), a.get("join_id")))
+        bool(a.get("force")), a.get("join_id"), a.get("requires")))
     d.register("wifi.scan", _h_wifi_scan)          # DEV-100
 
 def _json(request, obj):
