@@ -36,6 +36,8 @@ def available():
         return False
 
 
+IDLE_S = 120   # seconds without app traffic before the brain drops the link
+
 class BleCarrier:
     """poll()-driven like noknok_rpc.HttpCarrier: call poll() from the service loop."""
 
@@ -55,10 +57,11 @@ class BleCarrier:
         self._scan_resp.complete_name = name                    # name in the scan response
         self._buf = b""
         self._was_connected = False
+        self._last_rx = 0.0
         self._pop = pop
         self.session = None
         self.stats = {"requests": 0, "bytes_in": 0, "bytes_out": 0, "connects": 0,
-                      "encrypted": 0, "rejected": 0}
+                      "encrypted": 0, "rejected": 0, "idle_drops": 0}
 
     def start(self):
         if not self.radio.advertising:
@@ -86,6 +89,7 @@ class BleCarrier:
             self.stats["connects"] += 1
             self._buf = b""
             self.session = None              # a new link always starts unencrypted
+            self._last_rx = time.monotonic()
             self._log("[ble] app connected")
         if not connected:
             if self._was_connected:
@@ -96,7 +100,18 @@ class BleCarrier:
         self._was_connected = True
         n = self.uart.in_waiting
         if not n:
+            # A central that goes quiet (crashed app, OS that keeps a stale link)
+            # would block advertising forever, so nobody else could set the
+            # brain up. Drop it after IDLE_S without a single byte.
+            idle = time.monotonic() - self._last_rx
+            if idle > IDLE_S:
+                self.stats["idle_drops"] += 1
+                self._log("[ble] idle %ds, dropping link" % idle)
+                for c in self.radio.connections:
+                    c.disconnect()
+                self._last_rx = time.monotonic()
             return
+        self._last_rx = time.monotonic()
         chunk = self.uart.read(n)
         self.stats["bytes_in"] += len(chunk)
         self._buf += chunk

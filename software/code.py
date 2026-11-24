@@ -519,7 +519,7 @@ import adafruit_requests
 import adafruit_connection_manager
 from adafruit_httpserver import Server, Request, Response, POST
 
-CODE_VERSION = "0.49"
+CODE_VERSION = "0.50"
 
 LOG_FILE    = nk.DATA_DIR + "/log.txt"        # bench only (marker), see below
 EVENTS_KEY  = "events"     # audit history ([FW]/[CRASH]/[ROLE]/[RESET]...) lives in the
@@ -1941,20 +1941,34 @@ def _start_ble_setup():
         log(f"[ble] setup carrier not started ({e!r}) - hotspot only")
 
 _ble_err_next = 0
+_ble_err_since = None    # monotonic time of the first BluetoothError in a row
+BLE_DEAD_RESET_S = 30    # BLE stack errors for this long -> reset the brain
 
 def _serve_setup():
     """One service pass in setup mode: the HTTP /rpc carrier (+ deferred work)
     and, where present, the BLE carrier."""
-    global _ble_err_next
+    global _ble_err_next, _ble_err_since
     rpc.service(force=True)
     if _ble is not None:
         try:
             _ble.poll()
+            _ble_err_since = None
         except Exception as e:
             now = time.monotonic()
             if now >= _ble_err_next:                 # one line per 10 s at most
                 _ble_err_next = now + 10
                 log(f"[ble] poll error: {e!r}")
+            # RDM-24 soak: on CP 11.0.0-alpha.3 the ESP32-S3 BLE stack runs out of
+            # resources after ~128 connections (BluetoothError 0x0207, "Memory
+            # Capacity Exceeded") and never recovers; only a reset frees it.
+            # Without this the brain would sit in setup mode with BLE dead forever.
+            if type(e).__name__ == "BluetoothError":
+                if _ble_err_since is None:
+                    _ble_err_since = now
+                elif now - _ble_err_since > BLE_DEAD_RESET_S:
+                    log("[ble] BLE stack dead for %ds - resetting the brain" % BLE_DEAD_RESET_S)
+                    time.sleep(0.2)
+                    microcontroller.reset()
 
 def run_ap_provisioning():
     """
